@@ -70,6 +70,44 @@ error_exit() {
     exit 1
 }
 
+check_and_install_java() {
+    log "STEP" "Verificando o Java..."
+
+    if command -v java >/dev/null 2>&1; then
+        java_version=$(java -version 2>&1 | awk -F[\"_] '/version/ {print $2}')
+        major_version=$(echo "$java_version" | cut -d. -f1)
+
+        if [[ "$major_version" -eq 11 ]]; then
+            log "SUCCESS" "Java 11 já está instalado"
+            return
+        else
+            log "WARN" "Java instalado é versão $java_version (esperado: 11)"
+        fi
+    else
+        log "WARN" "Java não está instalado"
+    fi
+
+    log "INFO" "Instalando Java 11..."
+
+    case "$PKG_MANAGER" in
+        apt)
+            $PKG_UPDATE
+            $PKG_INSTALL openjdk-11-jdk || error_exit "Falha ao instalar Java 11 (apt)"
+            ;;
+        yum|dnf)
+            $PKG_UPDATE
+            $PKG_INSTALL java-11-openjdk-devel || error_exit "Falha ao instalar Java 11 (yum/dnf)"
+            ;;
+        *)
+            error_exit "Gerenciador de pacotes não suportado para instalação do Java"
+            ;;
+    esac
+
+    log "SUCCESS" "Java 11 instalado com sucesso"
+}
+
+
+
 check_root() {
     if [[ $EUID -ne 0 ]]; then
         error_exit "This script must be run as root. Use: sudo $0"
@@ -484,6 +522,7 @@ main() {
     log "INFO" "Author: Rodrigo Marins Piaba (Fanaticos4tech)"
     
     # Pre-installation checks
+    check_and_install_java
     check_root
     detect_os
     check_system_resources

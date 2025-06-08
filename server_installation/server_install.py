@@ -616,6 +616,57 @@ def load_config(config_file: Optional[str] = None) -> Dict:
     
     return default_config
 
+
+def check_and_install_java():
+    import subprocess
+    import platform
+    from shutil import which
+
+    print("🔍 Verificando se o Java 11 está instalado...")
+
+    def run(cmd):
+        return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    java_path = which("java")
+    if java_path:
+        result = run("java -version")
+        version_line = result.stderr.split("\n")[0] if result.stderr else result.stdout.split("\n")[0]
+        if 'version' in version_line:
+            version = version_line.split('"')[1]
+            major = int(version.split(".")[0]) if version.startswith("1.") is False else int(version.split(".")[1])
+            if major == 11:
+                print("✅ Java 11 já está instalado.")
+                return
+            else:
+                print(f"⚠️ Java detectado: versão {version}. Esperado: 11.")
+        else:
+            print("⚠️ Java detectado mas versão não identificada.")
+    else:
+        print("⚠️ Java não encontrado.")
+
+    print("📦 Instalando Java 11...")
+
+    distro = platform.linux_distribution()[0].lower() if hasattr(platform, 'linux_distribution') else platform.system().lower()
+    if "ubuntu" in distro or "debian" in distro:
+        cmds = [
+            "apt update",
+            "apt install -y openjdk-11-jdk"
+        ]
+    elif "centos" in distro or "rhel" in distro or "rocky" in distro or "alma" in distro:
+        cmds = [
+            "yum install -y java-11-openjdk-devel"
+        ]
+    else:
+        raise RuntimeError(f"Sistema não suportado para instalação automática do Java: {distro}")
+
+    for cmd in cmds:
+        res = run(cmd)
+        if res.returncode != 0:
+            print(f"❌ Erro ao executar: {cmd}\n{res.stderr}")
+            raise RuntimeError("Falha na instalação do Java.")
+    print("✅ Java 11 instalado com sucesso.\n")
+
+
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(
