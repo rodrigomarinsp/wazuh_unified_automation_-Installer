@@ -1,0 +1,144 @@
+---
+# Wazuh Unified Installer - Ansible Galaxy Requirements
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# 📦 Collection Requirements
+collections:
+  # Core Ansible collections
+  - name: ansible.posix
+    version: ">=1.5.4"
+    source: https://galaxy.ansible.com
+    
+  - name: community.general
+    version: ">=7.0.0"
+    source: https://galaxy.ansible.com
+    
+  - name: community.crypto
+    version: ">=2.10.0"
+    source: https://galaxy.ansible.com
+    
+  # System and package management
+  - name: ansible.utils
+    version: ">=2.10.0"
+    source: https://galaxy.ansible.com
+    
+  # Cloud providers (optional)
+  - name: amazon.aws
+    version: ">=6.0.0"
+    source: https://galaxy.ansible.com
+    
+  - name: google.cloud
+    version: ">=1.1.0"
+    source: https://galaxy.ansible.com
+    
+  - name: azure.azcollection
+    version: ">=1.15.0"
+    source: https://galaxy.ansible.com
+
+# 🎭 Role Requirements
+roles:
+  # System preparation and hardening
+  - name: geerlingguy.security
+    version: "2.0.1"
+    source: https://galaxy.ansible.com
+    
+  - name: geerlingguy.firewall
+    version: "2.7.0"
+    source: https://galaxy.ansible.com
+    
+  - name: geerlingguy.ntp
+    version: "2.1.0"
+    source: https://galaxy.ansible.com
+    
+  # Java installation (required for Wazuh Indexer)
+  - name: geerlingguy.java
+    version: "2.2.0"
+    source: https://galaxy.ansible.com
+    
+  # Nginx (optional for reverse proxy)
+  - name: geerlingguy.nginx
+    version: "3.1.4"
+    source: https://galaxy.ansible.com
+    
+  # Certificate management
+  - name: community.crypto.openssl_certificate
+    version: ">=2.0.0"
+    source: https://galaxy.ansible.com
+    
+  # Log rotation
+  - name: arillso.logrotate
+    version: "1.5.0"
+    source: https://galaxy.ansible.com
+    
+  # Monitoring (optional)
+  - name: cloudalchemy.prometheus
+    version: "2.17.5"
+    source: https://galaxy.ansible.com
+    
+  - name: cloudalchemy.grafana
+    version: "0.22.3"
+    source: https://galaxy.ansible.com
+
+# 🛠️ Additional Tools and Utilities
+  # System monitoring
+  - name: geerlingguy.node_exporter
+    version: "1.0.1"
+    source: https://galaxy.ansible.com
+    
+  # Backup utilities
+  - name: debops.rsync
+    version: "0.3.0"
+    source: https://galaxy.ansible.com
+    
+  # File management
+  - name: community.general.archive
+    version: ">=6.0.0"
+    source: https://galaxy.ansible.com
+
+# 📋 Requirements Installation:
+# Install all requirements with:
+# ansible-galaxy install -r requirements.yml
+#
+# Force update existing roles:
+# ansible-galaxy install -r requirements.yml --force
+#
+# Install to custom directory:
+# ansible-galaxy install -r requirements.yml -p ./galaxy_roles
+#
+# Install only collections:
+# ansible-galaxy collection install -r requirements.yml
+#
+# Install only roles:
+# ansible-galaxy role install -r requirements.yml
+
+# 🔧 Optional Development Tools
+# Uncomment if you need development and testing tools
+#
+# - name: community.molecule
+#   version: ">=4.0.0"
+#   source: https://galaxy.ansible.com
+#
+# - name: ansible.lint
+#   version: ">=6.0.0"
+#   source: https://galaxy.ansible.com
+
+# 🌐 Platform-Specific Collections
+# Uncomment based on your target platforms
+#
+# For Docker environments:
+# - name: community.docker
+#   version: ">=3.0.0"
+#   source: https://galaxy.ansible.com
+#
+# For Kubernetes environments:
+# - name: kubernetes.core
+#   version: ">=2.4.0"
+#   source: https://galaxy.ansible.com
+#
+# For VMware environments:
+# - name: community.vmware
+#   version: ">=3.0.0"
+#   source: https://galaxy.ansible.com

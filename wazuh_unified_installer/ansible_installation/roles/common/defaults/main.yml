@@ -1,0 +1,47 @@
+---
+# Wazuh Unified Installer - Common Role Defaults
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# Common packages for all systems
+common_packages:
+  - curl
+  - wget
+  - unzip
+  - gnupg
+  - lsb-release
+  - apt-transport-https
+  - ca-certificates
+  - software-properties-common
+
+# System limits configuration
+system_limits:
+  - domain: "{{ wazuh_user }}"
+    type: soft
+    item: nofile
+    value: 65536
+  - domain: "{{ wazuh_user }}"
+    type: hard
+    item: nofile
+    value: 65536
+  - domain: "{{ wazuh_user }}"
+    type: soft
+    item: memlock
+    value: unlimited
+  - domain: "{{ wazuh_user }}"
+    type: hard
+    item: memlock
+    value: unlimited
+
+# Kernel parameters
+kernel_parameters:
+  - name: vm.max_map_count
+    value: 262144
+  - name: net.core.somaxconn
+    value: 65535
+  - name: net.core.netdev_max_backlog
+    value: 5000
+  - name: fs.file-max
+    value: 2097152

@@ -1,0 +1,492 @@
+---
+# Wazuh Unified Installer - Installation Validation Playbook
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Validate Wazuh Installation
+  hosts: localhost
+  gather_facts: false
+  vars:
+    validation_timestamp: "{{ ansible_date_time.iso8601 }}"
+    validation_id: "{{ ansible_date_time.epoch }}"
+    
+  tasks:
+    - name: Display validation information
+      debug:
+        msg: |
+          🔍 Starting Wazuh Installation Validation
+          📅 Timestamp: {{ validation_timestamp }}
+          🆔 Validation ID: {{ validation_id }}
+          🎯 Target Environment: {{ target_environment | default('production') }}
+          
+    - name: Initialize validation results
+      set_fact:
+        validation_results:
+          managers: {}
+          indexers: {}
+          dashboards: {}
+          agents: {}
+          overall_status: "unknown"
+          issues_found: []
+          recommendations: []
+
+- name: Validate Wazuh Managers
+  hosts: wazuh_manager
+  become: true
+  gather_facts: true
+  vars:
+    component_name: "Wazuh Manager"
+    
+  tasks:
+    - name: Check manager service status
+      systemd:
+        name: wazuh-manager
+      register: manager_service
+      tags:
+        - services
+        - managers
+        
+    - name: Check manager API availability
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_manager_api_port | default(55000) }}"
+        method: GET
+        validate_certs: false
+        user: wazuh
+        password: "{{ wazuh_api_password | default('wazuh') }}"
+        status_code: 200
+      register: manager_api
+      retries: 3
+      delay: 10
+      tags:
+        - api
+        - managers
+        - connectivity
+        
+    - name: Check manager log files
+      stat:
+        path: "{{ item }}"
+      loop:
+        - /var/ossec/logs/ossec.log
+        - /var/ossec/logs/api.log
+        - /var/ossec/logs/cluster.log
+      register: manager_logs
+      tags:
+        - logs
+        - managers
+        
+    - name: Check manager configuration
+      stat:
+        path: /var/ossec/etc/ossec.conf
+      register: manager_config
+      tags:
+        - configuration
+        - managers
+        
+    - name: Get manager version
+      command: /var/ossec/bin/wazuh-control info
+      register: manager_version
+      changed_when: false
+      tags:
+        - version
+        - managers
+        
+    - name: Check cluster status (if enabled)
+      command: /var/ossec/bin/cluster_control -l
+      register: cluster_status
+      changed_when: false
+      failed_when: false
+      when: wazuh_cluster_enabled | default(false)
+      tags:
+        - cluster
+        - managers
+        
+    - name: Set manager validation results
+      set_fact:
+        manager_validation:
+          hostname: "{{ inventory_hostname }}"
+          service_status: "{{ manager_service.status.ActiveState }}"
+          api_status: "{{ 'healthy' if manager_api.status == 200 else 'unhealthy' }}"
+          version: "{{ manager_version.stdout | regex_search('Wazuh v([0-9.]+)', '\1') | first | default('unknown') }}"
+          config_exists: "{{ manager_config.stat.exists }}"
+          cluster_status: "{{ cluster_status.stdout | default('disabled') if wazuh_cluster_enabled else 'disabled' }}"
+          issues: []
+          
+    - name: Identify manager issues
+      set_fact:
+        manager_validation: "{{ manager_validation | combine({'issues': manager_validation.issues + [item]}) }}"
+      loop:
+        - "Service not active"
+        - "API not responding"
+        - "Configuration file missing"
+        - "Log files missing"
+      when:
+        - (item == "Service not active" and manager_service.status.ActiveState != "active") or
+          (item == "API not responding" and manager_api.status != 200) or
+          (item == "Configuration file missing" and not manager_config.stat.exists) or
+          (item == "Log files missing" and manager_logs.results | selectattr('stat.exists', 'equalto', false) | list | length > 0)
+      tags:
+        - validation
+        - issues
+
+- name: Validate Wazuh Indexers
+  hosts: wazuh_indexer
+  become: true
+  gather_facts: true
+  vars:
+    component_name: "Wazuh Indexer"
+    
+  tasks:
+    - name: Check indexer service status
+      systemd:
+        name: wazuh-indexer
+      register: indexer_service
+      tags:
+        - services
+        - indexers
+        
+    - name: Check indexer API availability
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_indexer_port | default(9200) }}"
+        method: GET
+        validate_certs: false
+        user: admin
+        password: "{{ wazuh_indexer_admin_password | default('admin') }}"
+        status_code: 200
+      register: indexer_api
+      retries: 3
+      delay: 10
+      tags:
+        - api
+        - indexers
+        - connectivity
+        
+    - name: Check indexer cluster health
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_indexer_port | default(9200) }}/_cluster/health"
+        method: GET
+        validate_certs: false
+        user: admin
+        password: "{{ wazuh_indexer_admin_password | default('admin') }}"
+        status_code: 200
+      register: indexer_health
+      retries: 3
+      delay: 10
+      tags:
+        - cluster
+        - indexers
+        - health
+        
+    - name: Check indexer indices
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_indexer_port | default(9200) }}/_cat/indices?v"
+        method: GET
+        validate_certs: false
+        user: admin
+        password: "{{ wazuh_indexer_admin_password | default('admin') }}"
+        status_code: 200
+      register: indexer_indices
+      tags:
+        - indices
+        - indexers
+        
+    - name: Set indexer validation results
+      set_fact:
+        indexer_validation:
+          hostname: "{{ inventory_hostname }}"
+          service_status: "{{ indexer_service.status.ActiveState }}"
+          api_status: "{{ 'healthy' if indexer_api.status == 200 else 'unhealthy' }}"
+          cluster_health: "{{ indexer_health.json.status | default('unknown') }}"
+          node_count: "{{ indexer_health.json.number_of_nodes | default(0) }}"
+          indices_count: "{{ indexer_indices.content.split('
+') | length - 2 }}"
+          issues: []
+          
+    - name: Identify indexer issues
+      set_fact:
+        indexer_validation: "{{ indexer_validation | combine({'issues': indexer_validation.issues + [item]}) }}"
+      loop:
+        - "Service not active"
+        - "API not responding"
+        - "Cluster unhealthy"
+        - "No indices found"
+      when:
+        - (item == "Service not active" and indexer_service.status.ActiveState != "active") or
+          (item == "API not responding" and indexer_api.status != 200) or
+          (item == "Cluster unhealthy" and indexer_health.json.status | default('red') == 'red') or
+          (item == "No indices found" and indexer_validation.indices_count | int == 0)
+
+- name: Validate Wazuh Dashboard
+  hosts: wazuh_dashboard
+  become: true
+  gather_facts: true
+  vars:
+    component_name: "Wazuh Dashboard"
+    
+  tasks:
+    - name: Check dashboard service status
+      systemd:
+        name: wazuh-dashboard
+      register: dashboard_service
+      tags:
+        - services
+        - dashboard
+        
+    - name: Check dashboard web interface
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_dashboard_port | default(443) }}"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: dashboard_web
+      retries: 3
+      delay: 10
+      tags:
+        - web
+        - dashboard
+        - connectivity
+        
+    - name: Check dashboard configuration
+      stat:
+        path: /etc/wazuh-dashboard/opensearch_dashboards.yml
+      register: dashboard_config
+      tags:
+        - configuration
+        - dashboard
+        
+    - name: Set dashboard validation results
+      set_fact:
+        dashboard_validation:
+          hostname: "{{ inventory_hostname }}"
+          service_status: "{{ dashboard_service.status.ActiveState }}"
+          web_status: "{{ 'accessible' if dashboard_web.status == 200 else 'inaccessible' }}"
+          config_exists: "{{ dashboard_config.stat.exists }}"
+          issues: []
+          
+    - name: Identify dashboard issues
+      set_fact:
+        dashboard_validation: "{{ dashboard_validation | combine({'issues': dashboard_validation.issues + [item]}) }}"
+      loop:
+        - "Service not active"
+        - "Web interface not accessible"
+        - "Configuration file missing"
+      when:
+        - (item == "Service not active" and dashboard_service.status.ActiveState != "active") or
+          (item == "Web interface not accessible" and dashboard_web.status != 200) or
+          (item == "Configuration file missing" and not dashboard_config.stat.exists)
+
+- name: Validate Wazuh Agents
+  hosts: wazuh_agents
+  become: true
+  gather_facts: true
+  vars:
+    component_name: "Wazuh Agent"
+    
+  tasks:
+    - name: Check agent service status
+      systemd:
+        name: wazuh-agent
+      register: agent_service
+      tags:
+        - services
+        - agents
+        
+    - name: Check agent configuration
+      stat:
+        path: /var/ossec/etc/ossec.conf
+      register: agent_config
+      tags:
+        - configuration
+        - agents
+        
+    - name: Get agent status
+      command: /var/ossec/bin/wazuh-control status
+      register: agent_status
+      changed_when: false
+      tags:
+        - status
+        - agents
+        
+    - name: Set agent validation results
+      set_fact:
+        agent_validation:
+          hostname: "{{ inventory_hostname }}"
+          service_status: "{{ agent_service.status.ActiveState }}"
+          agent_running: "{{ 'running' if 'wazuh-agentd is running' in agent_status.stdout else 'stopped' }}"
+          config_exists: "{{ agent_config.stat.exists }}"
+          issues: []
+          
+    - name: Identify agent issues
+      set_fact:
+        agent_validation: "{{ agent_validation | combine({'issues': agent_validation.issues + [item]}) }}"
+      loop:
+        - "Service not active"
+        - "Agent not running"
+        - "Configuration file missing"
+      when:
+        - (item == "Service not active" and agent_service.status.ActiveState != "active") or
+          (item == "Agent not running" and agent_validation.agent_running != "running") or
+          (item == "Configuration file missing" and not agent_config.stat.exists)
+
+- name: Connectivity Validation
+  hosts: wazuh_agents
+  gather_facts: false
+  
+  tasks:
+    - name: Test connectivity to manager
+      wait_for:
+        host: "{{ wazuh_manager_ip | default(hostvars[groups['wazuh_manager'][0]]['ansible_default_ipv4']['address']) }}"
+        port: "{{ wazuh_manager_port | default(1514) }}"
+        timeout: 10
+      register: manager_connectivity
+      failed_when: false
+      when: groups['wazuh_manager'] is defined
+      tags:
+        - connectivity
+        - agents
+
+- name: Generate Validation Report
+  hosts: localhost
+  gather_facts: false
+  run_once: true
+  
+  tasks:
+    - name: Collect validation results
+      set_fact:
+        final_validation_results:
+          timestamp: "{{ validation_timestamp }}"
+          validation_id: "{{ validation_id }}"
+          environment: "{{ target_environment | default('production') }}"
+          managers: "{{ groups['wazuh_manager'] | default([]) | map('extract', hostvars, 'manager_validation') | list }}"
+          indexers: "{{ groups['wazuh_indexer'] | default([]) | map('extract', hostvars, 'indexer_validation') | list }}"
+          dashboards: "{{ groups['wazuh_dashboard'] | default([]) | map('extract', hostvars, 'dashboard_validation') | list }}"
+          agents: "{{ groups['wazuh_agents'] | default([]) | map('extract', hostvars, 'agent_validation') | list }}"
+          
+    - name: Calculate overall health status
+      set_fact:
+        overall_issues: "{{ (final_validation_results.managers | selectattr('issues', 'defined') | map(attribute='issues') | list | flatten) + 
+                            (final_validation_results.indexers | selectattr('issues', 'defined') | map(attribute='issues') | list | flatten) + 
+                            (final_validation_results.dashboards | selectattr('issues', 'defined') | map(attribute='issues') | list | flatten) + 
+                            (final_validation_results.agents | selectattr('issues', 'defined') | map(attribute='issues') | list | flatten) }}"
+        
+    - name: Set overall status
+      set_fact:
+        overall_status: "{{ 'healthy' if overall_issues | length == 0 else 'degraded' if overall_issues | length < 5 else 'unhealthy' }}"
+        
+    - name: Display comprehensive validation report
+      debug:
+        msg: |
+          🔍 Wazuh Installation Validation Report
+          ========================================
+          📅 Timestamp: {{ validation_timestamp }}
+          🆔 Validation ID: {{ validation_id }}
+          🎯 Environment: {{ target_environment | default('production') }}
+          🏥 Overall Status: {{ overall_status | upper }}
+          
+          📊 Component Summary:
+          {% if final_validation_results.managers | length > 0 %}
+          🛡️  Managers ({{ final_validation_results.managers | length }}):
+          {% for manager in final_validation_results.managers %}
+          ├── {{ manager.hostname }}: {{ manager.service_status }} / API: {{ manager.api_status }}
+          {% if manager.issues | length > 0 %}
+          │   ⚠️  Issues: {{ manager.issues | join(', ') }}
+          {% endif %}
+          {% endfor %}
+          {% endif %}
+          
+          {% if final_validation_results.indexers | length > 0 %}
+          🔍 Indexers ({{ final_validation_results.indexers | length }}):
+          {% for indexer in final_validation_results.indexers %}
+          ├── {{ indexer.hostname }}: {{ indexer.service_status }} / Health: {{ indexer.cluster_health }}
+          {% if indexer.issues | length > 0 %}
+          │   ⚠️  Issues: {{ indexer.issues | join(', ') }}
+          {% endif %}
+          {% endfor %}
+          {% endif %}
+          
+          {% if final_validation_results.dashboards | length > 0 %}
+          📊 Dashboards ({{ final_validation_results.dashboards | length }}):
+          {% for dashboard in final_validation_results.dashboards %}
+          ├── {{ dashboard.hostname }}: {{ dashboard.service_status }} / Web: {{ dashboard.web_status }}
+          {% if dashboard.issues | length > 0 %}
+          │   ⚠️  Issues: {{ dashboard.issues | join(', ') }}
+          {% endif %}
+          {% endfor %}
+          {% endif %}
+          
+          {% if final_validation_results.agents | length > 0 %}
+          👥 Agents ({{ final_validation_results.agents | length }}):
+          ├── 🟢 Healthy: {{ final_validation_results.agents | selectattr('issues', 'equalto', []) | list | length }}
+          ├── 🔴 With Issues: {{ final_validation_results.agents | selectattr('issues', 'defined') | selectattr('issues', '!=', []) | list | length }}
+          {% set unhealthy_agents = final_validation_results.agents | selectattr('issues', 'defined') | selectattr('issues', '!=', []) | list %}
+          {% if unhealthy_agents | length > 0 %}
+          └── ⚠️  Problematic Agents:
+          {% for agent in unhealthy_agents %}
+              ├── {{ agent.hostname }}: {{ agent.issues | join(', ') }}
+          {% endfor %}
+          {% endif %}
+          {% endif %}
+          
+          {% if overall_issues | length > 0 %}
+          🚨 Issues Found ({{ overall_issues | length }}):
+          {% for issue in overall_issues | unique %}
+          ├── {{ issue }}
+          {% endfor %}
+          {% endif %}
+          
+          {% if overall_status != 'healthy' %}
+          📋 Recommendations:
+          {% if overall_issues | select('search', 'Service not active') | list | length > 0 %}
+          ├── 🔄 Restart failed services: systemctl restart [service-name]
+          {% endif %}
+          {% if overall_issues | select('search', 'API not responding') | list | length > 0 %}
+          ├── 🔌 Check API configuration and firewall rules
+          {% endif %}
+          {% if overall_issues | select('search', 'not accessible') | list | length > 0 %}
+          ├── 🌐 Verify network connectivity and SSL certificates
+          {% endif %}
+          ├── 📋 Check logs: /var/ossec/logs/ossec.log
+          ├── 🔧 Verify configuration files
+          └── 🔍 Run detailed diagnostics on failed components
+          {% endif %}
+          
+          🎯 Validation Status: {{ '✅ PASSED' if overall_status == 'healthy' else '⚠️  ISSUES FOUND' }}
+          
+    - name: Save validation report to file
+      copy:
+        content: |
+          # Wazuh Installation Validation Report
+          # Generated: {{ validation_timestamp }}
+          
+          VALIDATION_ID={{ validation_id }}
+          VALIDATION_TIMESTAMP={{ validation_timestamp }}
+          ENVIRONMENT={{ target_environment | default('production') }}
+          OVERALL_STATUS={{ overall_status }}
+          TOTAL_ISSUES={{ overall_issues | length }}
+          
+          # Component Counts
+          MANAGERS_COUNT={{ final_validation_results.managers | length }}
+          INDEXERS_COUNT={{ final_validation_results.indexers | length }}
+          DASHBOARDS_COUNT={{ final_validation_results.dashboards | length }}
+          AGENTS_COUNT={{ final_validation_results.agents | length }}
+          
+          # Health Status
+          HEALTHY_AGENTS={{ final_validation_results.agents | selectattr('issues', 'equalto', []) | list | length }}
+          UNHEALTHY_AGENTS={{ final_validation_results.agents | selectattr('issues', 'defined') | selectattr('issues', '!=', []) | list | length }}
+          
+          {% if overall_issues | length > 0 %}
+          # Issues Found
+          {% for issue in overall_issues | unique %}
+          ISSUE="{{ issue }}"
+          {% endfor %}
+          {% endif %}
+        dest: "./wazuh_validation_{{ validation_id }}.report"
+        mode: '0644'
+      delegate_to: localhost
+      
+    - name: Set validation completion status
+      set_fact:
+        validation_completed: true
+        validation_status: "{{ overall_status }}"
+        validation_issues_count: "{{ overall_issues | length }}"

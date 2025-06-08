@@ -1,0 +1,137 @@
+---
+# Wazuh Unified Installer - Main Ansible Deployment Playbook
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Wazuh Complete Infrastructure Deployment
+  hosts: localhost
+  gather_facts: false
+  vars:
+    deployment_timestamp: "{{ ansible_date_time.iso8601 }}"
+    deployment_id: "{{ ansible_date_time.epoch }}"
+    
+  tasks:
+    - name: Display deployment information
+      debug:
+        msg: |
+          🚀 Starting Wazuh Infrastructure Deployment
+          📅 Timestamp: {{ deployment_timestamp }}
+          🆔 Deployment ID: {{ deployment_id }}
+          🎯 Target Environment: {{ target_environment | default('production') }}
+
+    - name: Validate inventory configuration
+      assert:
+        that:
+          - groups['wazuh_manager'] is defined
+          - groups['wazuh_manager'] | length > 0
+        fail_msg: "❌ No Wazuh managers defined in inventory"
+        success_msg: "✅ Wazuh managers found in inventory"
+
+    - name: Check connectivity to all hosts
+      delegate_to: "{{ item }}"
+      ping:
+      loop: "{{ groups['all'] }}"
+      when: validate_connectivity | default(true)
+
+- name: Deploy Common Prerequisites
+  import_playbook: playbooks/site.yml
+  vars:
+    deployment_phase: "prerequisites"
+  tags:
+    - prerequisites
+    - common
+
+- name: Deploy Wazuh Server Components
+  import_playbook: playbooks/server_deploy.yml
+  vars:
+    deployment_phase: "server"
+  tags:
+    - server
+    - managers
+    - indexers
+    - dashboard
+
+- name: Deploy Wazuh Agents
+  import_playbook: playbooks/agents_deploy.yml
+  vars:
+    deployment_phase: "agents"
+  when: deploy_agents | default(true)
+  tags:
+    - agents
+
+- name: Validate Complete Installation
+  import_playbook: playbooks/validate.yml
+  vars:
+    deployment_phase: "validation"
+  when: validate_installation | default(true)
+  tags:
+    - validate
+    - test
+
+- name: Post-Deployment Summary
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Generate deployment summary
+      debug:
+        msg: |
+          🎉 Wazuh Infrastructure Deployment Complete!
+          
+          📊 Deployment Summary:
+          ├── 🕐 Started: {{ deployment_timestamp }}
+          ├── 🆔 ID: {{ deployment_id }}
+          ├── 🎯 Environment: {{ target_environment | default('production') }}
+          ├── 📦 Managers: {{ groups['wazuh_manager'] | length }}
+          ├── 🔍 Indexers: {{ groups['wazuh_indexer'] | length if groups['wazuh_indexer'] is defined else 0 }}
+          ├── 📊 Dashboards: {{ groups['wazuh_dashboard'] | length if groups['wazuh_dashboard'] is defined else 0 }}
+          └── 👥 Agents: {{ groups['wazuh_agents'] | length if groups['wazuh_agents'] is defined else 0 }}
+          
+          🔗 Access Information:
+          {% if groups['wazuh_dashboard'] is defined %}
+          {% for host in groups['wazuh_dashboard'] %}
+          ├── 🌐 Dashboard: https://{{ hostvars[host]['ansible_host'] | default(host) }}:443
+          {% endfor %}
+          {% endif %}
+          {% if groups['wazuh_manager'] is defined %}
+          {% for host in groups['wazuh_manager'] %}
+          ├── 🛡️  Manager API: https://{{ hostvars[host]['ansible_host'] | default(host) }}:55000
+          {% endfor %}
+          {% endif %}
+          
+          📋 Next Steps:
+          ├── 1️⃣  Configure agent enrollment
+          ├── 2️⃣  Set up custom rules and decoders
+          ├── 3️⃣  Configure integrations (if needed)
+          ├── 4️⃣  Set up monitoring and alerting
+          └── 5️⃣  Review security hardening checklist
+
+    - name: Save deployment information
+      copy:
+        content: |
+          # Wazuh Deployment Information
+          # Generated: {{ deployment_timestamp }}
+          
+          DEPLOYMENT_ID={{ deployment_id }}
+          DEPLOYMENT_TIMESTAMP={{ deployment_timestamp }}
+          TARGET_ENVIRONMENT={{ target_environment | default('production') }}
+          MANAGERS_COUNT={{ groups['wazuh_manager'] | length }}
+          INDEXERS_COUNT={{ groups['wazuh_indexer'] | length if groups['wazuh_indexer'] is defined else 0 }}
+          DASHBOARDS_COUNT={{ groups['wazuh_dashboard'] | length if groups['wazuh_dashboard'] is defined else 0 }}
+          AGENTS_COUNT={{ groups['wazuh_agents'] | length if groups['wazuh_agents'] is defined else 0 }}
+          
+          {% if groups['wazuh_dashboard'] is defined %}
+          {% for host in groups['wazuh_dashboard'] %}
+          DASHBOARD_URL_{{ loop.index }}=https://{{ hostvars[host]['ansible_host'] | default(host) }}:443
+          {% endfor %}
+          {% endif %}
+          
+          {% if groups['wazuh_manager'] is defined %}
+          {% for host in groups['wazuh_manager'] %}
+          MANAGER_API_{{ loop.index }}=https://{{ hostvars[host]['ansible_host'] | default(host) }}:55000
+          {% endfor %}
+          {% endif %}
+        dest: "./wazuh_deployment_{{ deployment_id }}.env"
+        mode: '0644'
+      delegate_to: localhost

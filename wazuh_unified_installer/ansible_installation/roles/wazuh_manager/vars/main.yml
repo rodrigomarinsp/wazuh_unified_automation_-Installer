@@ -1,0 +1,15 @@
+---
+# Wazuh Unified Installer - Manager Role Variables
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# Manager configuration paths
+wazuh_manager_config_file: "{{ wazuh_home }}/etc/ossec.conf"
+wazuh_manager_api_config: "{{ wazuh_home }}/api/configuration/api.yaml"
+wazuh_manager_rules_dir: "{{ wazuh_home }}/etc/rules"
+wazuh_manager_decoders_dir: "{{ wazuh_home }}/etc/decoders"
+
+# Service configuration
+wazuh_manager_systemd_file: "/etc/systemd/system/wazuh-manager.service.d/override.conf"

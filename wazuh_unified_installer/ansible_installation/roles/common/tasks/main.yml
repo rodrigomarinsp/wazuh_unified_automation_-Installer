@@ -1,0 +1,85 @@
+---
+# Wazuh Unified Installer - Common Role Tasks
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Include OS-specific variables
+  include_vars: "{{ ansible_os_family }}.yml"
+  tags:
+    - always
+
+- name: Update package cache
+  package:
+    update_cache: yes
+  when: package_update_cache | default(true)
+  tags:
+    - packages
+    - prerequisites
+
+- name: Install common packages
+  package:
+    name: "{{ common_packages }}"
+    state: present
+  tags:
+    - packages
+    - prerequisites
+
+- name: Configure system limits
+  pam_limits:
+    domain: "{{ item.domain }}"
+    limit_type: "{{ item.type }}"
+    limit_item: "{{ item.item }}"
+    value: "{{ item.value }}"
+  loop: "{{ system_limits }}"
+  notify: reboot system
+  tags:
+    - system
+    - limits
+
+- name: Configure kernel parameters
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    sysctl_set: yes
+    state: present
+    reload: yes
+  loop: "{{ kernel_parameters }}"
+  tags:
+    - system
+    - kernel
+
+- name: Create wazuh user
+  user:
+    name: "{{ wazuh_user }}"
+    group: "{{ wazuh_group }}"
+    home: "{{ wazuh_home }}"
+    shell: /bin/false
+    system: yes
+    create_home: no
+  tags:
+    - users
+    - wazuh
+
+- name: Create wazuh group
+  group:
+    name: "{{ wazuh_group }}"
+    system: yes
+  tags:
+    - users
+    - wazuh
+
+- name: Configure firewall
+  include_tasks: firewall.yml
+  when: firewall_enabled | default(true)
+  tags:
+    - firewall
+    - security
+
+- name: Setup log rotation
+  include_tasks: logrotate.yml
+  when: setup_log_rotation | default(true)
+  tags:
+    - logrotate
+    - logs

@@ -1,0 +1,419 @@
+# Wazuh Dashboard Configuration Template
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+# License: GPL-3.0
+
+# =============================================================================
+# WAZUH DASHBOARD CONFIGURATION
+# This file contains production-ready settings for Wazuh Dashboard
+# =============================================================================
+
+# Server Configuration
+server:
+  host: "0.0.0.0"
+  port: 443
+  name: "wazuh-dashboard"
+  basePath: ""
+  maxPayloadBytes: 1048576
+  
+  # SSL Configuration
+  ssl:
+    enabled: true
+    key: "/etc/wazuh-dashboard/certs/node-key.pem"
+    certificate: "/etc/wazuh-dashboard/certs/node.pem"
+    certificateAuthorities: ["/etc/wazuh-dashboard/certs/root-ca.pem"]
+    supportedProtocols: ["TLSv1.2", "TLSv1.3"]
+    clientAuthentication: "optional"
+    verificationMode: "certificate"
+    cipherSuites:
+      - "ECDHE-RSA-AES256-GCM-SHA384"
+      - "ECDHE-RSA-AES128-GCM-SHA256"
+      - "ECDHE-RSA-AES256-SHA384"
+      - "ECDHE-RSA-AES128-SHA256"
+      - "ECDHE-RSA-AES256-SHA"
+      - "ECDHE-RSA-AES128-SHA"
+
+# OpenSearch Configuration
+opensearch:
+  hosts: ["https://localhost:9200"]
+  ssl:
+    verificationMode: "certificate"
+    certificateAuthorities: ["/etc/wazuh-dashboard/certs/root-ca.pem"]
+    certificate: "/etc/wazuh-dashboard/certs/node.pem"
+    key: "/etc/wazuh-dashboard/certs/node-key.pem"
+  
+  username: "kibanaserver"
+  password: "kibanaserver_password"
+  
+  requestHeadersWhitelist: ["securitytenant", "Authorization"]
+  
+  # Connection settings
+  requestTimeout: 120000
+  shardTimeout: 30000
+  pingTimeout: 3000
+  startupTimeout: 5000
+
+# Wazuh API Configuration
+wazuh:
+  api:
+    timeout: 20000
+    
+  # Multiple API connections support
+  hosts:
+    - default:
+        url: "https://localhost"
+        port: 55000
+        username: "wazuh-wui"
+        password: "wazuh-wui-password"
+        run_as: false
+
+# Logging Configuration
+logging:
+  appenders:
+    default:
+      type: "file"
+      fileName: "/var/log/wazuh-dashboard/wazuh-dashboard.log"
+      layout:
+        type: "json"
+    
+    console:
+      type: "console"
+      layout:
+        type: "pattern"
+        pattern: "[%date] [%level] [%logger] %message"
+  
+  root:
+    appenders: ["default", "console"]
+    level: "info"
+  
+  loggers:
+    - name: "http.server.response"
+      level: "debug"
+      appenders: ["default"]
+      additivity: false
+    
+    - name: "plugins.wazuh"
+      level: "info"
+      appenders: ["default"]
+      additivity: false
+
+# Security Configuration
+opensearch_security:
+  multitenancy:
+    enabled: true
+    tenants:
+      preferred: ["Private", "Global"]
+    
+  auth:
+    type: "basicauth"
+    anonymous_auth_enabled: false
+    
+  cookie:
+    secure: true
+    name: "wazuh-dashboard-auth"
+    password: "change_this_cookie_password_min_32_chars"
+    
+  session:
+    ttl: 86400000  # 24 hours
+    keepalive: true
+
+# Visualization Configuration
+vis:
+  defaultAggregation: "terms"
+  
+map:
+  includeOpenSearchMapsService: false
+  proxyOpenSearchMapsServiceInMaps: false
+  tilemap:
+    url: "https://tiles-{s}.elastic.co/v2/default/{z}/{x}/{y}.png?elastic_tile_service_tos=agree"
+    options:
+      minZoom: 0
+      maxZoom: 12
+      attribution: "© OpenSearch Contributors | © OpenStreetMap contributors"
+
+# Monitoring Configuration
+monitoring:
+  enabled: false
+  
+status:
+  allowAnonymous: false
+
+# Development Configuration
+dev:
+  basePathProxyTarget: "http://localhost:5601"
+
+# Console Configuration
+console:
+  enabled: true
+
+# Discover Configuration
+discover:
+  sampleSize: 500
+  aggs:
+    terms:
+      size: 20
+
+# Advanced Settings
+advanced_settings:
+  # Date format
+  dateFormat: "MMM D, YYYY @ HH:mm:ss.SSS"
+  dateFormat:tz: "Browser"
+  
+  # Default columns
+  defaultColumns: ["_source"]
+  
+  # Default index
+  defaultIndex: "wazuh-alerts-*"
+  
+  # Doc table settings
+  doc_table:
+    highlight: true
+    
+  # Filter settings
+  filterByEnabled: true
+  
+  # Histogram settings
+  histogram:
+    barTarget: 50
+    maxBars: 100
+  
+  # Meta fields
+  metaFields: ["_source", "_id", "_type", "_index", "_score"]
+  
+  # Query settings
+  query:
+    allowLeadingWildcards: true
+    queryString:
+      options: {}
+  
+  # Search settings
+  search:
+    queryLanguage: "kuery"
+  
+  # Sort settings
+  sort:
+    options: ["desc", "asc"]
+  
+  # State settings
+  state:
+    storeInSessionStorage: false
+  
+  # Truncate settings
+  truncate:
+    maxHeight: 500
+
+# Data Configuration
+data:
+  # Autocomplete settings
+  autocomplete:
+    valueSuggestions:
+      enabled: true
+      method: "terms_agg"
+      size: 10
+      timeout: 1000
+
+# Saved Objects Configuration
+savedObjects:
+  maxImportPayloadBytes: 26214400  # 25MB
+  maxImportExportSize: 10000
+
+# Search Configuration
+search:
+  timeout: 600000  # 10 minutes
+
+# Visualization Configuration
+visualization:
+  colorMapping: {}
+  regionmap:
+    includeOpenSearchMapsService: false
+  
+  loadingDelay: 2000
+
+# Telemetry Configuration
+telemetry:
+  enabled: false
+  allowChangingOptInStatus: false
+  optIn: false
+  sendUsageFrom: "server"
+
+# Home Configuration
+home:
+  disableWelcomeScreen: true
+
+# News Feed Configuration
+newsfeed:
+  enabled: false
+
+# Usage Collection Configuration
+usage_collection:
+  enabled: false
+
+# Cross-Site Protection
+csp:
+  rules:
+    - "script-src 'self' 'unsafe-eval'"
+    - "style-src 'self' 'unsafe-inline'"
+    - "connect-src 'self'"
+
+# Performance Configuration
+ops:
+  interval: 5000
+  cGroupOverrides:
+    cpuPath: "/sys/fs/cgroup/cpu"
+    cpuAcctPath: "/sys/fs/cgroup/cpuacct"
+
+# Migration Configuration
+migrations:
+  batchSize: 1000
+  scrollDuration: "15m"
+  pollInterval: 1500
+  skip: false
+
+# Index Pattern Configuration
+index_patterns:
+  fieldMapping:
+    lookBack: 5
+
+# Environment Configuration
+pid:
+  file: "/var/run/wazuh-dashboard/wazuh-dashboard.pid"
+  exclusive: false
+
+# Path Configuration
+path:
+  data: "/var/lib/wazuh-dashboard"
+
+# Wazuh App Configuration
+wazuh:
+  # General settings
+  pattern: "wazuh-alerts-*"
+  
+  # Monitoring settings
+  monitoring:
+    enabled: true
+    frequency: 900
+    shards: 1
+    replicas: 0
+    creation: "h"
+    pattern: "wazuh-monitoring-*"
+  
+  # Statistics settings
+  statistics:
+    enabled: true
+    indices: "statistics"
+    frequency: 900
+    shards: 1
+    replicas: 0
+    creation: "w"
+    pattern: "wazuh-statistics-*"
+  
+  # Vulnerability detector settings
+  vulnerabilities:
+    pattern: "wazuh-alerts-*"
+  
+  # Sample alerts settings
+  sample:
+    prefix: "wazuh-sample"
+    template: "wazuh-sample-template"
+    alerts:
+      sampleSize: 500
+  
+  # Wazuh API timeout
+  timeout: 20000
+  
+  # Check updates
+  checkUpdates: true
+  
+  # Hide manager alerts
+  hideManagerAlerts: false
+  
+  # Default extensions
+  extensions:
+    pci: true
+    gdpr: true
+    hipaa: true
+    nist: true
+    tsc: true
+    audit: true
+    oscap: false
+    ciscat: false
+    aws: false
+    gcp: false
+    virustotal: false
+    osquery: false
+    docker: false
+  
+  # Custom branding
+  customization:
+    enabled: false
+    logo:
+      app: ""
+      sidebar: ""
+      login: ""
+      reports: ""
+    
+  # IP selector
+  ip:
+    selector: true
+    ignore: []
+  
+  # Logs level
+  logs:
+    level: "info"
+  
+  # Enrollment DNS
+  enrollment:
+    dns: ""
+    password: ""
+
+# Application Configuration
+newPlatform:
+  enabled: true
+
+# Plugin Configuration
+plugins:
+  scanDirs: []
+  initialize: true
+  
+security:
+  showInsecureClusterWarning: false
+
+# Region Map Configuration
+region_map:
+  includeOpenSearchMapsService: false
+
+# Time Configuration
+timelion:
+  enabled: false
+
+# Vega Configuration
+vega:
+  enabled: false
+
+# Cross Cluster Search Configuration
+cross_cluster_search:
+  enabled: false
+
+# Watcher Configuration
+watcher:
+  enabled: false
+
+# X-Pack Configuration
+xpack:
+  encryptedSavedObjects:
+    encryptionKey: "fhjskloppd678ehkdfdlliverpoolfcr"
+  
+  reporting:
+    enabled: false
+  
+  security:
+    enabled: false
+    
+  ml:
+    enabled: false
+
+# Dashboard-only mode
+dashboard_only_mode:
+  enabled: false

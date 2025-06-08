@@ -1,0 +1,345 @@
+# 🛡️ Wazuh Unified Installer - Enterprise Security Management Platform
+
+[![Version](https://img.shields.io/badge/version-4.8.0-blue.svg)](https://github.com/wazuh/wazuh)
+[![License](https://img.shields.io/badge/license-GPL--2.0-green.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](BUILD)
+[![Security](https://img.shields.io/badge/security-enterprise--grade-red.svg)](SECURITY)
+
+---
+
+## 🚀 Quick Start
+
+### One-Command Installation
+
+```bash
+# Clone and run the unified installer
+git clone https://github.com/your-org/wazuh-unified-installer.git
+cd wazuh-unified-installer
+chmod +x main_installer.sh
+sudo ./main_installer.sh
+```
+
+### Configuration-First Approach
+
+```bash
+# 1. Configure your deployment
+cp config.yml.example config.yml
+nano config.yml  # Edit your preferences
+
+# 2. Run automated installation
+./main_installer.sh --config config.yml
+```
+
+---
+
+## 📋 System Requirements
+
+### Minimum Requirements
+
+- **OS**: Ubuntu 20.04+, CentOS 7+, RHEL 7+, Debian 10+, SLES 15+
+- **RAM**: 4GB (8GB recommended for production)
+- **CPU**: 2 cores (4+ cores recommended)
+- **Disk**: 50GB free space (SSD recommended)
+- **Network**: Ports 1514, 1515, 55000, 9200, 5601
+
+### Automatic System Validation
+
+The installer performs comprehensive pre-flight checks:
+
+- ✅ Operating system compatibility  
+- ✅ Hardware resource validation  
+- ✅ Network connectivity verification  
+- ✅ Dependency resolution  
+- ✅ Firewall configuration  
+- ✅ SSL certificate generation  
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+graph TB
+  A[Wazuh Manager] --> B[Wazuh Indexer]
+  A --> C[Wazuh Dashboard]
+  A --> D[Wazuh Agents]
+  B --> C
+  D --> A
+  subgraph "Installation Methods"
+    E[Server Automation]
+    F[Ansible Deployment]
+    G[Agent Management]
+    H[Manual Installation]
+  end
+```
+
+---
+
+## 📁 Project Structure
+
+```text
+📁 Wazuh_Unified_Installer/
+├── README.md                  # This master guide
+├── config.yml                 # Unified configuration
+├── main_installer.sh          # Master installer orchestrator
+├── requirements.txt           # Python dependencies
+├── server_installation/       # Server automation scripts
+│   ├── README.md
+│   ├── server_install.sh
+│   ├── server_install.py
+│   ├── validate_install.sh
+│   ├── configs/
+│   └── scripts/
+├── ansible_installation/      # Ansible deployment
+│   ├── README.md
+│   ├── ansible_deploy.yml
+│   ├── inventory_template.yml
+│   ├── playbooks/
+│   ├── roles/
+│   └── group_vars/
+├── agent_installation/        # Agent management
+│   ├── README.md
+│   ├── agent_deploy.sh
+│   ├── agent_deploy.py
+│   ├── scripts/
+│   ├── configs/
+│   └── tools/
+├── manual_installation/       # Step-by-step guides
+│   ├── README.md
+│   ├── Manual_Installation_Guide.pdf
+│   ├── step_by_step/
+│   ├── scripts/
+│   └── verification/
+└── shared/                    # Common utilities
+    ├── utils/
+    ├── templates/
+    └── logs/
+```
+
+---
+
+## ⚙️ Installation Methods
+
+### 🖥️ Server Installation (Automated)
+
+```bash
+cd server_installation/
+./server_install.sh --full-stack
+```
+
+**Features:**
+
+- Zero-touch installation  
+- Automatic SSL certificate generation  
+- Service health monitoring  
+- Performance optimization  
+- Security hardening  
+
+---
+
+### 🔧 Ansible Deployment (Enterprise)
+
+```bash
+cd ansible_installation/
+ansible-playbook -i inventory.yml ansible_deploy.yml
+```
+
+**Features:**
+
+- Multi-environment support  
+- Parallel deployment  
+- Configuration management  
+- Rolling updates  
+- Disaster recovery  
+
+---
+
+### 👥 Agent Management (Scalable)
+
+```bash
+cd agent_installation/
+./agent_deploy.py --bulk-install --manager-ip 192.168.1.100
+```
+
+**Features:**
+
+- Mass deployment capabilities  
+- Cross-platform support (Linux, Windows, macOS)  
+- Automated enrollment  
+- Health monitoring  
+- Centralized configuration  
+
+---
+
+### 📖 Manual Installation (Educational)
+
+```bash
+cd manual_installation/
+# Follow README.md or Manual_Installation_Guide.pdf
+```
+
+**Features:**
+
+- Detailed explanations  
+- Copy-paste commands  
+- Troubleshooting guidance  
+- Learning-oriented approach  
+
+---
+
+## 🌐 Post-Installation Access
+
+### 🖥️ Wazuh Dashboard
+
+- **URL**: `https://your-server-ip:5601`
+- **Default User**: `admin`
+- **Default Password**: Auto-generated (check installation logs)
+
+### 🔍 Wazuh Manager API
+
+- **URL**: `https://your-server-ip:55000`
+- **Authentication**: API key based
+
+### 📊 Elasticsearch/OpenSearch
+
+- **URL**: `https://your-server-ip:9200`
+- **Access**: Internal communication (secured)
+
+---
+
+## 🔒 Security Configuration
+
+### Automatic Security Hardening
+
+- ✅ SSL/TLS encryption for all communications  
+- ✅ Strong password generation  
+- ✅ Firewall configuration  
+- ✅ Certificate-based authentication  
+- ✅ API key rotation  
+- ✅ Log integrity verification  
+
+### Manual Security Enhancements
+
+```bash
+./shared/utils/change_passwords.sh
+./shared/utils/regenerate_certs.sh
+./shared/utils/apply_security_policies.sh
+```
+
+---
+
+## 📊 Performance Optimization
+
+### Automatic Tuning
+
+- JVM heap sizes based on available RAM  
+- Elasticsearch shards and replicas  
+- File descriptor limits  
+- Kernel parameters  
+- Network buffer sizes  
+
+### Manual Optimization
+
+```bash
+./shared/utils/performance_monitor.sh
+./shared/utils/optimize_resources.sh
+./shared/utils/manage_indices.sh
+```
+
+---
+
+## 🛠️ Troubleshooting
+
+### Quick Diagnostics
+
+```bash
+./shared/utils/health_check.sh
+./shared/utils/service_status.sh
+./shared/utils/analyze_logs.sh
+```
+
+### Common Issues
+
+#### Installation Fails
+
+1. Check system requirements  
+2. Verify network connectivity  
+3. Review installation logs in `shared/logs/`
+
+#### Services Not Starting
+
+1. Check service status: `systemctl status wazuh-manager`  
+2. Review service logs: `journalctl -u wazuh-manager`  
+3. Verify configuration files
+
+#### Dashboard Access Issues
+
+1. Verify SSL certificates  
+2. Check firewall rules  
+3. Confirm service bindings
+
+---
+
+## 🔄 Maintenance Operations
+
+### Updates and Upgrades
+
+```bash
+./shared/utils/update_wazuh.sh
+./shared/utils/upgrade_wazuh.sh --version 4.8.0
+```
+
+### Backup and Recovery
+
+```bash
+./shared/utils/backup_wazuh.sh
+./shared/utils/restore_wazuh.sh --backup-file backup_20231201.tar.gz
+```
+
+### Monitoring and Alerting
+
+```bash
+./shared/utils/setup_monitoring.sh
+./shared/utils/configure_alerts.sh
+```
+
+---
+
+## 📞 Support and Contributing
+
+### Documentation
+
+- 📖 [Official Wazuh Documentation](https://documentation.wazuh.com/)
+- 🎥 [Video Tutorials](https://wazuh.com/resources/)
+- 💬 [Community Forum](https://wazuh.com/community/)
+
+### Issue Reporting
+
+1. Check existing issues in the repository  
+2. Provide detailed environment information  
+3. Include installation logs and error messages  
+4. Follow the issue template  
+
+### Contributing
+
+1. Fork the repository  
+2. Create a feature branch  
+3. Test your changes thoroughly  
+4. Submit a pull request with detailed description  
+
+---
+
+## 📄 License
+
+This project is licensed under the GNU General Public License v2.0 - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🏆 Acknowledgments
+
+- **Wazuh Team** for the excellent SIEM platform  
+- **Community Contributors** for testing and feedback  
+- **Enterprise Users** for production use cases and requirements  
+
+---
+
+**🚀 Ready to deploy enterprise-grade security monitoring? Start with the Quick Start section above!**

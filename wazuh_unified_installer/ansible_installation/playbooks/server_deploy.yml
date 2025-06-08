@@ -1,0 +1,274 @@
+---
+# Wazuh Unified Installer - Server Components Deployment
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Deploy Wazuh Indexer
+  hosts: wazuh_indexer
+  become: true
+  gather_facts: true
+  serial: "{{ wazuh_indexer_serial | default('100%') }}"
+  vars:
+    component_name: "Wazuh Indexer"
+    
+  pre_tasks:
+    - name: Display indexer deployment information
+      debug:
+        msg: |
+          🔍 Deploying {{ component_name }} on {{ inventory_hostname }}
+          📦 Version: {{ wazuh_version | default('4.7.0') }}
+          🌐 Node Name: {{ wazuh_indexer_node_name | default(inventory_hostname) }}
+          🎯 Node Type: {{ wazuh_indexer_node_type | default('data') }}
+          
+  roles:
+    - role: wazuh_indexer
+      tags:
+        - wazuh_indexer
+        - indexer
+        - server
+        
+  post_tasks:
+    - name: Verify indexer installation
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_indexer_port | default(9200) }}"
+        method: GET
+        validate_certs: false
+        user: admin
+        password: "{{ wazuh_indexer_admin_password | default('admin') }}"
+        status_code: 200
+      register: indexer_health
+      retries: 5
+      delay: 30
+      tags:
+        - verification
+        - indexer
+        
+    - name: Display indexer status
+      debug:
+        msg: |
+          ✅ {{ component_name }} successfully deployed on {{ inventory_hostname }}
+          🌐 API Endpoint: https://{{ ansible_default_ipv4.address }}:{{ wazuh_indexer_port | default(9200) }}
+          📊 Cluster Status: {{ indexer_health.json.status | default('unknown') }}
+
+- name: Deploy Wazuh Manager
+  hosts: wazuh_manager
+  become: true
+  gather_facts: true
+  serial: "{{ wazuh_manager_serial | default('1') }}"  # Deploy managers one by one
+  vars:
+    component_name: "Wazuh Manager"
+    
+  pre_tasks:
+    - name: Display manager deployment information
+      debug:
+        msg: |
+          🛡️  Deploying {{ component_name }} on {{ inventory_hostname }}
+          📦 Version: {{ wazuh_version | default('4.7.0') }}
+          🎯 Manager Type: {{ wazuh_manager_type | default('worker') }}
+          🔗 Cluster: {{ wazuh_cluster_enabled | default(false) }}
+          
+    - name: Wait for indexer availability (if exists)
+      wait_for:
+        host: "{{ hostvars[item]['ansible_default_ipv4']['address'] }}"
+        port: "{{ wazuh_indexer_port | default(9200) }}"
+        timeout: 300
+      loop: "{{ groups['wazuh_indexer'] | default([]) }}"
+      when: 
+        - groups['wazuh_indexer'] is defined
+        - wait_for_indexer | default(true)
+        
+  roles:
+    - role: wazuh_manager
+      tags:
+        - wazuh_manager
+        - manager
+        - server
+        
+  post_tasks:
+    - name: Verify manager installation
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_manager_api_port | default(55000) }}"
+        method: GET
+        validate_certs: false
+        user: wazuh
+        password: "{{ wazuh_api_password | default('wazuh') }}"
+        status_code: 200
+      register: manager_health
+      retries: 5
+      delay: 30
+      tags:
+        - verification
+        - manager
+        
+    - name: Display manager status
+      debug:
+        msg: |
+          ✅ {{ component_name }} successfully deployed on {{ inventory_hostname }}
+          🌐 API Endpoint: https://{{ ansible_default_ipv4.address }}:{{ wazuh_manager_api_port | default(55000) }}
+          🔗 Cluster Status: {{ 'enabled' if wazuh_cluster_enabled else 'disabled' }}
+          👥 Max Agents: {{ wazuh_manager_max_agents | default(10000) }}
+
+- name: Deploy Wazuh Dashboard
+  hosts: wazuh_dashboard
+  become: true
+  gather_facts: true
+  serial: "{{ wazuh_dashboard_serial | default('100%') }}"
+  vars:
+    component_name: "Wazuh Dashboard"
+    
+  pre_tasks:
+    - name: Display dashboard deployment information
+      debug:
+        msg: |
+          📊 Deploying {{ component_name }} on {{ inventory_hostname }}
+          📦 Version: {{ wazuh_version | default('4.7.0') }}
+          🌐 Bind Address: {{ wazuh_dashboard_bind_host | default('0.0.0.0') }}
+          🔒 SSL Enabled: {{ wazuh_dashboard_ssl_enabled | default(true) }}
+          
+    - name: Wait for manager availability
+      wait_for:
+        host: "{{ hostvars[item]['ansible_default_ipv4']['address'] }}"
+        port: "{{ wazuh_manager_api_port | default(55000) }}"
+        timeout: 300
+      loop: "{{ groups['wazuh_manager'] | default([]) }}"
+      when: 
+        - groups['wazuh_manager'] is defined
+        - wait_for_manager | default(true)
+        
+    - name: Wait for indexer availability
+      wait_for:
+        host: "{{ hostvars[item]['ansible_default_ipv4']['address'] }}"
+        port: "{{ wazuh_indexer_port | default(9200) }}"
+        timeout: 300
+      loop: "{{ groups['wazuh_indexer'] | default([]) }}"
+      when: 
+        - groups['wazuh_indexer'] is defined
+        - wait_for_indexer | default(true)
+        
+  roles:
+    - role: wazuh_dashboard
+      tags:
+        - wazuh_dashboard
+        - dashboard
+        - server
+        
+  post_tasks:
+    - name: Verify dashboard installation
+      uri:
+        url: "https://{{ ansible_default_ipv4.address }}:{{ wazuh_dashboard_port | default(443) }}"
+        method: GET
+        validate_certs: false
+        status_code: 200
+      register: dashboard_health
+      retries: 5
+      delay: 30
+      tags:
+        - verification
+        - dashboard
+        
+    - name: Display dashboard status
+      debug:
+        msg: |
+          ✅ {{ component_name }} successfully deployed on {{ inventory_hostname }}
+          🌐 Web Interface: https://{{ ansible_default_ipv4.address }}:{{ wazuh_dashboard_port | default(443) }}
+          🔑 Default Login: admin / {{ wazuh_dashboard_admin_password | default('admin') }}
+
+- name: Post-Deployment Server Configuration
+  hosts: wazuh_cluster
+  become: true
+  gather_facts: false
+  run_once: true
+  
+  tasks:
+    - name: Configure cluster connectivity
+      include_role:
+        name: common
+        tasks_from: cluster_config
+      when: wazuh_cluster_enabled | default(false)
+      tags:
+        - cluster
+        - post-config
+        
+    - name: Configure indexer cluster
+      include_role:
+        name: wazuh_indexer
+        tasks_from: cluster
+      when: 
+        - groups['wazuh_indexer'] | length > 1
+        - wazuh_indexer_cluster_enabled | default(true)
+      tags:
+        - indexer
+        - cluster
+        - post-config
+        
+    - name: Import default dashboards and templates
+      include_role:
+        name: wazuh_dashboard
+        tasks_from: import_defaults
+      when: groups['wazuh_dashboard'] is defined
+      tags:
+        - dashboard
+        - templates
+        - post-config
+        
+    - name: Create default agent groups
+      include_role:
+        name: wazuh_manager
+        tasks_from: agent_groups
+      when: 
+        - groups['wazuh_manager'] is defined
+        - create_default_groups | default(true)
+      tags:
+        - manager
+        - agent-groups
+        - post-config
+
+- name: Server Deployment Summary
+  hosts: localhost
+  gather_facts: false
+  run_once: true
+  
+  tasks:
+    - name: Generate server deployment summary
+      debug:
+        msg: |
+          🎉 Wazuh Server Components Deployment Summary
+          ================================================
+          
+          📊 Component Status:
+          {% if groups['wazuh_manager'] is defined %}
+          🛡️  Managers: {{ groups['wazuh_manager'] | length }} deployed
+          {% for host in groups['wazuh_manager'] %}
+          ├── {{ host }}: https://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:55000
+          {% endfor %}
+          {% endif %}
+          
+          {% if groups['wazuh_indexer'] is defined %}
+          🔍 Indexers: {{ groups['wazuh_indexer'] | length }} deployed
+          {% for host in groups['wazuh_indexer'] %}
+          ├── {{ host }}: https://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:9200
+          {% endfor %}
+          {% endif %}
+          
+          {% if groups['wazuh_dashboard'] is defined %}
+          📊 Dashboards: {{ groups['wazuh_dashboard'] | length }} deployed
+          {% for host in groups['wazuh_dashboard'] %}
+          ├── {{ host }}: https://{{ hostvars[host]['ansible_default_ipv4']['address'] }}:443
+          {% endfor %}
+          {% endif %}
+          
+          🔧 Configuration:
+          ├── 🔗 Cluster: {{ 'Enabled' if wazuh_cluster_enabled else 'Disabled' }}
+          ├── 🔒 SSL: {{ 'Enabled' if enable_ssl else 'Disabled' }}
+          ├── 📦 Version: {{ wazuh_version | default('4.7.0') }}
+          └── 🎯 Environment: {{ target_environment | default('production') }}
+          
+          📋 Next Steps:
+          ├── 1️⃣  Deploy agents using: ansible-playbook playbooks/agents_deploy.yml
+          ├── 2️⃣  Validate installation: ansible-playbook playbooks/validate.yml
+          ├── 3️⃣  Configure custom rules and decoders
+          └── 4️⃣  Set up monitoring and alerting
+          
+          🕐 Deployment completed at: {{ ansible_date_time.iso8601 }}

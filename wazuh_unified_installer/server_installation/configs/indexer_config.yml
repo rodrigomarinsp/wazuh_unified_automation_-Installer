@@ -1,0 +1,408 @@
+# Wazuh Indexer Configuration Template
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+# License: GPL-3.0
+
+# =============================================================================
+# WAZUH INDEXER (OpenSearch) CONFIGURATION
+# This file contains production-ready settings for Wazuh Indexer
+# =============================================================================
+
+# Cluster Configuration
+cluster:
+  name: "wazuh-cluster"
+  initial_master_nodes:
+    - "wazuh-indexer"
+  
+  # Node roles
+  node:
+    name: "wazuh-indexer"
+    master: true
+    data: true
+    ingest: true
+    ml: false
+
+# Network Configuration
+network:
+  host: "0.0.0.0"
+  bind_host: "0.0.0.0"
+  publish_host: "_local_"
+  
+  # HTTP settings
+  http:
+    port: 9200
+    max_content_length: "100mb"
+    max_initial_line_length: "4kb"
+    max_header_size: "8kb"
+    compression: true
+    cors:
+      enabled: true
+      allow_origin: "*"
+      max_age: 86400
+      allow_methods: "OPTIONS,HEAD,GET,POST,PUT,DELETE"
+      allow_headers: "X-Requested-With,X-Auth-Token,Content-Type,Content-Length,Authorization"
+      allow_credentials: true
+  
+  # Transport settings
+  transport:
+    port: 9300
+    compress: true
+
+# Path Configuration
+path:
+  data: "/var/lib/wazuh-indexer"
+  logs: "/var/log/wazuh-indexer"
+  repo: "/var/lib/wazuh-indexer/backup"
+
+# Discovery Configuration
+discovery:
+  type: "single-node"
+  seed_hosts:
+    - "127.0.0.1:9300"
+
+# Bootstrap Configuration
+bootstrap:
+  memory_lock: true
+
+# Security Configuration
+plugins:
+  security:
+    ssl:
+      transport:
+        pemcert_filepath: "certs/node.pem"
+        pemkey_filepath: "certs/node-key.pem"
+        pemtrustedcas_filepath: "certs/root-ca.pem"
+        enforce_hostname_verification: false
+        resolve_hostname: false
+      
+      http:
+        enabled: true
+        pemcert_filepath: "certs/node.pem"
+        pemkey_filepath: "certs/node-key.pem"
+        pemtrustedcas_filepath: "certs/root-ca.pem"
+        clientauth_mode: "OPTIONAL"
+    
+    # Authentication and authorization
+    authcz:
+      admin_dn:
+        - "CN=admin,OU=Wazuh,O=Wazuh,L=California,C=US"
+    
+    # Audit logging
+    audit:
+      type: "internal_opensearch"
+      config:
+        enable_rest: true
+        enable_transport: true
+        resolve_bulk_requests: true
+        log_request_body: false
+        resolve_indices: true
+        exclude_sensitive_headers: true
+    
+    # Advanced security settings
+    enable_snapshot_restore_privilege: true
+    check_snapshot_restore_write_privileges: true
+    restapi:
+      roles_enabled: ["all_access", "security_rest_api_access"]
+    
+    # System indices
+    system_indices:
+      enabled: true
+      indices:
+        - ".opendistro-alerting-config"
+        - ".opendistro-alerting-alert*"
+        - ".opendistro-anomaly-results*"
+        - ".opendistro-anomaly-detector*"
+        - ".opendistro-anomaly-checkpoints"
+        - ".opendistro-anomaly-detection-state"
+        - ".opendistro-reports-*"
+        - ".opendistro-notifications-*"
+        - ".opendistro-notebooks"
+        - ".opendistro-asynchronous-search-response*"
+
+# Index Management
+indices:
+  # Memory circuit breaker
+  breaker:
+    total:
+      use_real_memory: false
+      limit: "95%"
+    fielddata:
+      limit: "40%"
+    request:
+      limit: "60%"
+  
+  # Recovery settings
+  recovery:
+    max_bytes_per_sec: "40mb"
+  
+  # Store settings
+  store:
+    preload: ["nvd", "dvd"]
+  
+  # Query settings
+  query:
+    bool:
+      max_clause_count: 10000
+
+# Memory Configuration
+indices.memory:
+  index_buffer_size: "20%"
+  min_index_buffer_size: "96mb"
+
+# Thread Pool Configuration
+thread_pool:
+  search:
+    size: 4
+    queue_size: 1000
+  
+  search_throttled:
+    size: 1
+    queue_size: 100
+  
+  write:
+    size: 4
+    queue_size: 1000
+  
+  get:
+    size: 4
+    queue_size: 1000
+  
+  analyze:
+    size: 1
+    queue_size: 16
+  
+  snapshot:
+    size: 1
+    queue_size: 1000
+
+# Logging Configuration
+logger:
+  level: "INFO"
+  
+  # Component-specific logging
+  rootLogger: "INFO,console,file"
+  
+  # File appender
+  appender:
+    console:
+      type: "console"
+      layout:
+        type: "pattern"
+        conversionPattern: "[%d{ISO8601}][%-5p][%-25c{1.}] [%node_name]%marker %m%n"
+    
+    file:
+      type: "dailyRollingFile"
+      file: "${path.logs}/wazuh-indexer.log"
+      datePattern: "'.'yyyy-MM-dd"
+      layout:
+        type: "pattern"
+        conversionPattern: "[%d{ISO8601}][%-5p][%-25c{1.}] [%node_name]%marker %m%n"
+
+# Action Configuration
+action:
+  # Destructive operations
+  destructive_requires_name: true
+  
+  # Auto create index
+  auto_create_index: true
+
+# Monitoring Configuration
+xpack:
+  monitoring:
+    enabled: false
+  
+  security:
+    enabled: false
+  
+  ml:
+    enabled: false
+
+# Performance Tuning
+index:
+  # Refresh interval
+  refresh_interval: "30s"
+  
+  # Number of shards
+  number_of_shards: 1
+  number_of_replicas: 0
+  
+  # Merge settings
+  merge:
+    scheduler:
+      max_thread_count: 1
+      max_merge_count: 4
+  
+  # Translog settings
+  translog:
+    flush_threshold_size: "1gb"
+    sync_interval: "30s"
+    durability: "request"
+  
+  # Indexing settings
+  indexing:
+    slowlog:
+      threshold:
+        query:
+          warn: "10s"
+          info: "5s"
+          debug: "2s"
+          trace: "500ms"
+        fetch:
+          warn: "1s"
+          info: "800ms"
+          debug: "500ms"
+          trace: "200ms"
+        index:
+          warn: "10s"
+          info: "5s"
+          debug: "2s"
+          trace: "500ms"
+
+# Search Configuration
+search:
+  # Search settings
+  max_buckets: 65536
+  max_open_scroll_context: 500
+  default_search_timeout: "30s"
+  
+  # Keep alive settings
+  keep_alive:
+    max: "1h"
+    default: "5m"
+
+# Script Configuration
+script:
+  allowed_types: "inline,stored"
+  allowed_contexts: "search,update,aggs"
+  max_compilations_rate: "75/5m"
+
+# Snapshot Configuration
+repositories:
+  fs:
+    location: "/var/lib/wazuh-indexer/backup"
+    compress: true
+
+# Wazuh Template Settings
+wazuh_template:
+  template_name: "wazuh"
+  pattern: "wazuh-alerts-*"
+  settings:
+    index:
+      number_of_shards: 1
+      number_of_replicas: 0
+      refresh_interval: "5s"
+      codec: "best_compression"
+      mapping:
+        total_fields:
+          limit: 10000
+      max_result_window: 100000
+      max_docvalue_fields_search: 200
+
+# Index Lifecycle Management
+ilm:
+  enabled: true
+  rollover_alias: "wazuh-alerts"
+  pattern: "wazuh-alerts-*"
+  policy: "wazuh_policy"
+  settings:
+    hot:
+      max_size: "30gb"
+      max_age: "1d"
+    warm:
+      min_age: "1d"
+      max_age: "7d"
+    cold:
+      min_age: "7d"
+      max_age: "30d"
+    delete:
+      min_age: "30d"
+
+# Node Allocation
+cluster.routing:
+  allocation:
+    enable: "all"
+    node_concurrent_incoming_recoveries: 2
+    node_concurrent_outgoing_recoveries: 2
+    node_initial_primaries_recoveries: 4
+    same_shard:
+      host: false
+  
+  rebalance:
+    enable: "all"
+    concurrent: 1
+  
+  allocation.disk:
+    threshold_enabled: true
+    watermark:
+      low: "85%"
+      high: "90%"
+      flood_stage: "95%"
+
+# Gateway Recovery
+gateway:
+  expected_nodes: 1
+  expected_master_nodes: 1
+  recover_after_nodes: 1
+  recover_after_time: "5m"
+
+# HTTP Compression
+http:
+  compression: true
+  compression_level: 6
+  max_content_length: "100mb"
+
+# Cross Cluster Search
+search.remote:
+  connect: false
+
+# Fielddata Cache
+indices.fielddata:
+  cache:
+    size: "20%"
+
+# Request Cache
+indices.requests:
+  cache:
+    size: "1%"
+    expire: "1h"
+
+# Query Cache  
+indices.queries:
+  cache:
+    size: "10%"
+    count: 10000
+
+# Custom Settings for Wazuh
+wazuh:
+  monitoring:
+    enabled: true
+    frequency: 900
+    shards: 1
+    replicas: 0
+  
+  template:
+    enabled: true
+    overwrite: true
+    
+  indices:
+    pattern: "wazuh-alerts-*"
+    template_name: "wazuh"
+    
+# GeoIP Database
+ingest:
+  geoip:
+    downloader:
+      enabled: false
+
+# Machine Learning
+xpack.ml:
+  enabled: false
+  max_model_memory_limit: "1gb"
+  max_lazy_ml_nodes: 1
+
+# Experimental Features
+experimental:
+  feature:
+    composite_template_enabled: false

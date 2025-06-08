@@ -1,0 +1,6 @@
+---
+# Agent role defaults
+wazuh_agent_service: wazuh-agent
+wazuh_agent_config_profile: production
+enable_agent_monitoring: true
+enable_agent_auto_update: false

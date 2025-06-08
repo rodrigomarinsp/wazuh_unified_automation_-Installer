@@ -1,0 +1,18 @@
+---
+# Wazuh Unified Installer - Indexer Role Variables
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# Indexer configuration paths
+wazuh_indexer_config_file: /etc/wazuh-indexer/opensearch.yml
+wazuh_indexer_jvm_config: /etc/wazuh-indexer/jvm.options
+wazuh_indexer_data_dir: /var/lib/wazuh-indexer
+wazuh_indexer_log_dir: /var/log/wazuh-indexer
+
+# Certificate paths
+wazuh_indexer_cert_dir: /etc/wazuh-indexer/certs
+wazuh_indexer_node_cert: "{{ wazuh_indexer_cert_dir }}/indexer.pem"
+wazuh_indexer_node_key: "{{ wazuh_indexer_cert_dir }}/indexer-key.pem"
+wazuh_indexer_root_ca: "{{ wazuh_indexer_cert_dir }}/root-ca.pem"

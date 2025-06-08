@@ -1,0 +1,395 @@
+# Wazuh Manager Configuration Template
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+# License: GPL-3.0
+
+# =============================================================================
+# WAZUH MANAGER CONFIGURATION
+# This file contains production-ready settings for Wazuh Manager
+# =============================================================================
+
+# Global Configuration
+global:
+  # Email notification settings
+  email_notification: false
+  email_to: "admin@company.com"
+  email_from: "wazuh@company.com"
+  smtp_server: "localhost"
+  
+  # White list for IP addresses (agents that can connect without key)
+  white_list:
+    - "127.0.0.1"
+    - "::1"
+    - "localhost"
+
+# Syslog Output Configuration
+syslog_output:
+  enabled: false
+  server: "192.168.1.100"
+  port: 514
+  format: "default"
+
+# Database Output Configuration
+database_output:
+  enabled: false
+  hostname: "localhost"
+  username: "wazuh"
+  password: "wazuh_password"
+  database: "wazuh"
+  type: "mysql"
+
+# Integration Settings
+integrations:
+  # Slack integration
+  slack:
+    enabled: false
+    hook_url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+    level: 7
+    group: "authentication_success,authentication_failed"
+  
+  # VirusTotal integration
+  virustotal:
+    enabled: false
+    api_key: "YOUR_VIRUSTOTAL_API_KEY"
+    
+  # PagerDuty integration
+  pagerduty:
+    enabled: false
+    api_key: "YOUR_PAGERDUTY_API_KEY"
+
+# Remote Configuration
+remote:
+  enabled: true
+  port: 1514
+  protocol: "tcp"
+  allowed_ips:
+    - "any"
+  deny_ips: []
+  
+  # Connection settings
+  connection:
+    secure: true
+    timeout: 60
+    max_connections: 256
+
+# Cluster Configuration
+cluster:
+  enabled: false
+  name: "wazuh_cluster"
+  node_name: "master"
+  node_type: "master"
+  key: "cluster_key_change_me"
+  port: 1516
+  bind_addr: "0.0.0.0"
+  nodes:
+    - "192.168.1.100"
+  hidden: false
+  disabled: false
+
+# Active Response Configuration
+active_response:
+  enabled: true
+  ca_store: "/var/ossec/etc/wpk_root.pem"
+  ca_verification: true
+  
+  # Default active responses
+  responses:
+    - name: "firewall-drop"
+      command: "firewall-drop"
+      location: "local"
+      timeout: 600
+      
+    - name: "host-deny"
+      command: "host-deny"
+      location: "local"
+      timeout: 600
+
+# Ruleset Configuration
+ruleset:
+  # Decoder directories
+  decoder_dir:
+    - "ruleset/decoders"
+    - "etc/decoders"
+  
+  # Rule directories
+  rule_dir:
+    - "ruleset/rules"
+    - "etc/rules"
+  
+  # Custom rules
+  rule_exclude:
+    - "0215-policy_rules.xml"
+  
+  # Lists
+  list:
+    - "etc/lists/audit-keys"
+    - "etc/lists/amazon/aws-eventnames"
+    - "etc/lists/security-eventchannel"
+
+# Alerts Configuration
+alerts:
+  # Minimum severity level for alerts
+  log_alert_level: 3
+  
+  # Email alerts
+  email_alert_level: 12
+  
+  # JSON output
+  jsonout_output: true
+  
+  # Alerts log format
+  alerts_log: true
+
+# Logging Configuration
+logging:
+  # Log level (0=debug, 1=info, 2=warning, 3=error)
+  log_level: 1
+  
+  # Rotate logs
+  rotate_log: true
+  max_log_size: "100MB"
+  log_rotation_interval: "daily"
+  
+  # Specific component logging
+  components:
+    wazuh_db: 1
+    wazuh_modules: 1
+    analysis: 1
+    agent: 1
+
+# Auth Configuration
+auth:
+  enabled: true
+  port: 1515
+  use_source_ip: false
+  force_insert: true
+  force_time: 0
+  purge: true
+  use_password: false
+  limit_maxagents: true
+  ciphers: "HIGH:!ADH:!EXP:!MD5:!RC4:!3DES:!CAMELLIA:@STRENGTH"
+  ssl_verify_host: false
+  ssl_manager_cert: "/var/ossec/etc/sslmanager.cert"
+  ssl_manager_key: "/var/ossec/etc/sslmanager.key"
+  ssl_auto_negotiate: false
+
+# Vulnerability Detector Configuration
+vulnerability_detector:
+  enabled: true
+  interval: "5m"
+  run_on_start: true
+  providers:
+    canonical:
+      enabled: true
+      os:
+        - "trusty"
+        - "xenial"
+        - "bionic"
+        - "focal"
+        - "jammy"
+      update_interval: "1h"
+    
+    debian:
+      enabled: true
+      os:
+        - "wheezy"
+        - "jessie"
+        - "stretch"
+        - "buster"
+        - "bullseye"
+      update_interval: "1h"
+    
+    redhat:
+      enabled: true
+      os:
+        - "5"
+        - "6"
+        - "7"
+        - "8"
+        - "9"
+      update_interval: "1h"
+    
+    nvd:
+      enabled: true
+      update_interval: "1h"
+
+# CIS-CAT Integration
+ciscat:
+  enabled: false
+  install_path: "/var/ossec/wodles/ciscat"
+  timeout: 1800
+  interval: "1d"
+  scan_on_start: true
+  java_path: "/usr/bin/java"
+  benchmarks_path: "/var/ossec/wodles/ciscat/benchmarks"
+
+# OpenSCAP Integration
+openscap:
+  enabled: false
+  interval: "1d"
+  scan_on_start: true
+  timeout: 1800
+  profiles:
+    - "xccdf_org.ssgproject.content_profile_pci-dss"
+    - "xccdf_org.ssgproject.content_profile_cis"
+
+# System Call Monitoring (Linux only)
+syscollector:
+  enabled: true
+  interval: "1h"
+  scan_on_start: true
+  hardware: true
+  os: true
+  network: true
+  packages: true
+  ports: true
+  processes: true
+
+# Security Configuration Assessment
+sca:
+  enabled: true
+  interval: "12h"
+  scan_on_start: true
+  skip_nfs: true
+  policies:
+    - "policy_files/cis_debian_linux_rcl.yml"
+    - "policy_files/cis_rhel7_linux_rcl.yml"
+    - "policy_files/cis_rhel8_linux_rcl.yml"
+
+# Rootcheck Configuration
+rootcheck:
+  enabled: true
+  frequency: 43200  # 12 hours
+  rootkit_files: "/var/ossec/etc/shared/rootkit_files.txt"
+  rootkit_trojans: "/var/ossec/etc/shared/rootkit_trojans.txt"
+  system_audit: "/var/ossec/etc/shared/system_audit_rcl.txt"
+  skip_nfs: true
+
+# File Integrity Monitoring
+syscheck:
+  enabled: true
+  frequency: 43200  # 12 hours
+  scan_on_start: true
+  auto_ignore: false
+  alert_new_files: true
+  remove_old_diff: true
+  restart_audit: true
+  
+  # Directories to monitor
+  directories:
+    - path: "/etc"
+      check_all: true
+      report_changes: true
+    - path: "/usr/bin"
+      check_all: true
+    - path: "/usr/sbin"
+      check_all: true
+    - path: "/bin"
+      check_all: true
+    - path: "/sbin"
+      check_all: true
+    - path: "/boot"
+      check_all: true
+  
+  # Files to ignore
+  ignore:
+    - "/etc/mtab"
+    - "/etc/hosts.deny"
+    - "/etc/mail/statistics"
+    - "/etc/random-seed"
+    - "/etc/adjtime"
+    - "/etc/httpd/logs"
+    - "/etc/utmpx"
+    - "/etc/wtmpx"
+    - "/etc/cups/certs"
+    - "/etc/dumpdates"
+    - "/etc/svc/volatile"
+
+# Log Analysis
+localfile:
+  # System logs
+  - location: "/var/log/messages"
+    log_format: "syslog"
+  
+  - location: "/var/log/secure"
+    log_format: "syslog"
+  
+  - location: "/var/log/auth.log"
+    log_format: "syslog"
+  
+  - location: "/var/log/syslog"
+    log_format: "syslog"
+  
+  - location: "/var/log/dpkg.log"
+    log_format: "syslog"
+  
+  # Web server logs
+  - location: "/var/log/apache2/access.log"
+    log_format: "apache"
+  
+  - location: "/var/log/apache2/error.log"
+    log_format: "apache"
+  
+  - location: "/var/log/nginx/access.log"
+    log_format: "nginx"
+  
+  - location: "/var/log/nginx/error.log"
+    log_format: "nginx"
+
+# Command Monitoring
+command:
+  - name: "netstat"
+    executable: "netstat -tulpn | sed 's/\([[:alnum:]]\+\)\ \+\([[:digit:]]\+\)\ \+\([[:digit:]]\+\)\ \+\(.*\):\([[:digit:]]\*\)\ \+\(.*\):\([[:digit:]\*]\+\)\ \+\([[:upper:]]\+\)\ \+\([[:digit:]\*]\+\/[[:alnum:]\-]*\)*/\2 \4 \5 \6 \7 \8 \9/' | sort -k 9 -g | sed 's/.*\/\([[:alnum:]\-]*\)/\1/' | sed 1,2d"
+    frequency: 360
+    timeout: 240
+  
+  - name: "last"
+    executable: "last -n 20"
+    frequency: 360
+    timeout: 60
+
+# Performance Configuration
+performance:
+  # Queue sizes
+  queue_size: 131072
+  statistical_queue_size: 16384
+  
+  # Worker threads
+  worker_pool_size: 4
+  
+  # Memory limits
+  memory_limit: 1024
+  
+  # Database settings
+  db_max_memory: 512
+  db_max_fragmentation: 75
+
+# API Configuration  
+api:
+  enabled: true
+  host: "0.0.0.0"
+  port: 55000
+  use_only_authd: false
+  drop_privileges: true
+  experimental_features: false
+  max_upload_size: 67108864  # 64MB
+  ssl_protocol: "TLS"
+  ssl_ciphers: "ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-SHA384:ECDHE-RSA-AES128-SHA256"
+  cors_enabled: true
+  cors_source_route: "*"
+  cors_expose_headers: "*"
+  cors_allow_headers: "*"
+  cors_allow_credentials: true
+  cache_enabled: true
+  cache_time: 0.750
+  access_max_login_attempts: 50
+  access_block_time: 300
+  access_max_request_per_minute: 300
+
+# Custom Rules and Decoders Paths
+custom:
+  rules_path: "/var/ossec/etc/rules/local_rules.xml"
+  decoders_path: "/var/ossec/etc/decoders/local_decoder.xml"
+  lists_path: "/var/ossec/etc/lists"

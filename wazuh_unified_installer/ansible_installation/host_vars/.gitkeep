@@ -1,0 +1,3 @@
+# This file ensures the host_vars directory is tracked in git
+# Place host-specific variable files here when needed
+# Example: host_vars/web-server-01.yml

@@ -1,0 +1,65 @@
+---
+# Wazuh Unified Installer - Agent Role Tasks
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Add Wazuh repository GPG key
+  apt_key:
+    url: "{{ wazuh_repository_gpg_key }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Add Wazuh repository
+  apt_repository:
+    repo: "deb https://packages.wazuh.com/4.x/apt/ stable main"
+    state: present
+    filename: wazuh
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Install Wazuh Agent
+  package:
+    name: "wazuh-agent={{ wazuh_version }}-{{ wazuh_revision }}"
+    state: present
+  notify:
+    - restart wazuh-agent
+  tags:
+    - install
+
+- name: Configure Wazuh Agent
+  template:
+    src: ossec.conf.j2
+    dest: "{{ wazuh_home }}/etc/ossec.conf"
+    owner: "{{ wazuh_user }}"
+    group: "{{ wazuh_group }}"
+    mode: '0640'
+    backup: yes
+  notify:
+    - restart wazuh-agent
+  tags:
+    - configuration
+
+- name: Start and enable Wazuh Agent
+  systemd:
+    name: wazuh-agent
+    state: started
+    enabled: yes
+  tags:
+    - service
+
+- name: Configure agent monitoring
+  include_tasks: monitoring.yml
+  when: enable_agent_monitoring | default(true)
+  tags:
+    - monitoring
+
+- name: Setup auto-update
+  include_tasks: auto_update.yml
+  when: enable_agent_auto_update | default(false)
+  tags:
+    - auto-update

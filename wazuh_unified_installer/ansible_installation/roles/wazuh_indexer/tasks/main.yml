@@ -1,0 +1,98 @@
+---
+# Wazuh Unified Installer - Indexer Role Tasks
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Install Java
+  package:
+    name: openjdk-11-jdk
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - java
+    - prerequisites
+
+- name: Add Wazuh repository GPG key
+  apt_key:
+    url: "{{ wazuh_repository_gpg_key }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Add Wazuh repository
+  apt_repository:
+    repo: "deb https://packages.wazuh.com/4.x/apt/ stable main"
+    state: present
+    filename: wazuh
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Install Wazuh Indexer
+  package:
+    name: "wazuh-indexer={{ wazuh_version }}-{{ wazuh_revision }}"
+    state: present
+  notify:
+    - restart wazuh-indexer
+  tags:
+    - install
+
+- name: Configure Wazuh Indexer
+  template:
+    src: opensearch.yml.j2
+    dest: /etc/wazuh-indexer/opensearch.yml
+    owner: wazuh-indexer
+    group: wazuh-indexer
+    mode: '0644'
+    backup: yes
+  notify:
+    - restart wazuh-indexer
+  tags:
+    - configuration
+
+- name: Configure JVM options
+  template:
+    src: jvm.options.j2
+    dest: /etc/wazuh-indexer/jvm.options
+    owner: wazuh-indexer
+    group: wazuh-indexer
+    mode: '0644'
+    backup: yes
+  notify:
+    - restart wazuh-indexer
+  tags:
+    - configuration
+    - jvm
+
+- name: Generate certificates
+  include_tasks: certificates.yml
+  when: generate_certificates | default(true)
+  tags:
+    - certificates
+    - ssl
+
+- name: Start and enable Wazuh Indexer
+  systemd:
+    name: wazuh-indexer
+    state: started
+    enabled: yes
+  tags:
+    - service
+
+- name: Configure indexer cluster
+  include_tasks: cluster.yml
+  when: 
+    - groups['wazuh_indexer'] | length > 1
+    - wazuh_indexer_cluster_enabled | default(true)
+  tags:
+    - cluster
+
+- name: Import index templates
+  include_tasks: templates.yml
+  when: import_index_templates | default(true)
+  tags:
+    - templates
+    - post-config

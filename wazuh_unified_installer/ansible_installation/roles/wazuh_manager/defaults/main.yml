@@ -1,0 +1,29 @@
+---
+# Wazuh Unified Installer - Manager Role Defaults
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# Manager service configuration
+wazuh_manager_service: wazuh-manager
+
+# Default agent groups to create
+default_agent_groups:
+  - default
+  - linux-servers
+  - windows-servers
+  - web-servers
+  - database-servers
+
+# API configuration defaults
+wazuh_api_host: "{{ ansible_default_ipv4.address }}"
+wazuh_api_port: 55000
+wazuh_api_use_ssl: true
+wazuh_api_ssl_cert: "{{ wazuh_home }}/api/configuration/ssl/server.crt"
+wazuh_api_ssl_key: "{{ wazuh_home }}/api/configuration/ssl/server.key"
+
+# Cluster configuration defaults
+wazuh_cluster_port: 1516
+wazuh_cluster_bind_addr: "0.0.0.0"
+wazuh_cluster_nodes: "{{ groups['wazuh_manager'] | default([inventory_hostname]) }}"

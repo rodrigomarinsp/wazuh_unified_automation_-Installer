@@ -1,0 +1,67 @@
+---
+# Wazuh Unified Installer - Dashboard Role Tasks
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Add Wazuh repository GPG key
+  apt_key:
+    url: "{{ wazuh_repository_gpg_key }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Add Wazuh repository
+  apt_repository:
+    repo: "deb https://packages.wazuh.com/4.x/apt/ stable main"
+    state: present
+    filename: wazuh
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Install Wazuh Dashboard
+  package:
+    name: "wazuh-dashboard={{ wazuh_version }}-{{ wazuh_revision }}"
+    state: present
+  notify:
+    - restart wazuh-dashboard
+  tags:
+    - install
+
+- name: Configure Wazuh Dashboard
+  template:
+    src: opensearch_dashboards.yml.j2
+    dest: /etc/wazuh-dashboard/opensearch_dashboards.yml
+    owner: wazuh-dashboard
+    group: wazuh-dashboard
+    mode: '0644'
+    backup: yes
+  notify:
+    - restart wazuh-dashboard
+  tags:
+    - configuration
+
+- name: Generate certificates
+  include_tasks: certificates.yml
+  when: generate_certificates | default(true)
+  tags:
+    - certificates
+    - ssl
+
+- name: Start and enable Wazuh Dashboard
+  systemd:
+    name: wazuh-dashboard
+    state: started
+    enabled: yes
+  tags:
+    - service
+
+- name: Import default dashboards
+  include_tasks: import_defaults.yml
+  when: import_default_dashboards | default(true)
+  tags:
+    - dashboards
+    - post-config

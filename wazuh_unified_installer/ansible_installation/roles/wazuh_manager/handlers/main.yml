@@ -1,0 +1,18 @@
+---
+# Wazuh Unified Installer - Manager Role Handlers
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: restart wazuh-manager
+  systemd:
+    name: wazuh-manager
+    state: restarted
+  listen: "restart wazuh-manager"
+
+- name: reload wazuh-manager
+  systemd:
+    name: wazuh-manager
+    state: reloaded
+  listen: "reload wazuh-manager"

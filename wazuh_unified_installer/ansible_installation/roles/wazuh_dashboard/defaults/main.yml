@@ -1,0 +1,6 @@
+---
+# Dashboard role defaults
+wazuh_dashboard_service: wazuh-dashboard
+wazuh_dashboard_port: 443
+wazuh_dashboard_bind_host: "0.0.0.0"
+import_default_dashboards: true

@@ -1,0 +1,199 @@
+---
+# Wazuh Unified Installer - Agent Group Variables  
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# 👥 Wazuh Agent Configuration
+wazuh_agent_config:
+  # Manager connection
+  manager_ip: "{{ wazuh_manager_ip | default(hostvars[groups['wazuh_manager'][0]]['ansible_default_ipv4']['address']) }}"
+  manager_port: "{{ wazuh_manager_port | default(1514) }}"
+  enrollment_port: "{{ wazuh_manager_enrollment_port | default(1515) }}"
+  
+  # Agent identification
+  agent_name: "{{ inventory_hostname }}"
+  agent_group: "{{ wazuh_agent_group | default('default') }}"
+  
+  # Connection settings
+  notify_time: 10
+  time_reconnect: 60
+  auto_restart: true
+
+# 🔍 File Integrity Monitoring
+wazuh_agent_syscheck:
+  enabled: true
+  frequency: "{{ wazuh_agent_syscheck_frequency | default(43200) }}"  # 12 hours
+  scan_on_start: true
+  auto_ignore: false
+  alert_new_files: true
+  ignore_files: []
+  no_diff_files: []
+  
+  directories:
+    linux:
+      - path: "/etc"
+        options: "check_all=yes"
+      - path: "/usr/bin"
+        options: "check_all=yes"
+      - path: "/usr/sbin"  
+        options: "check_all=yes"
+      - path: "/bin"
+        options: "check_all=yes"
+      - path: "/sbin"
+        options: "check_all=yes"
+      - path: "/boot"
+        options: "check_all=yes"
+        
+    windows:
+      - path: "%WINDIR%/win.ini"
+        options: "check_all=yes"
+      - path: "%WINDIR%/system.ini"
+        options: "check_all=yes"
+      - path: "%WINDIR%/SysWOW64"
+        options: "check_all=yes"
+      - path: "%PROGRAMFILES%"
+        options: "check_all=yes"
+
+# 🔍 Rootkit Detection
+wazuh_agent_rootcheck:
+  enabled: true
+  frequency: "{{ wazuh_agent_rootcheck_frequency | default(86400) }}"  # 24 hours
+  check_files: true
+  check_trojans: true
+  check_dev: true
+  check_sys: true
+  check_pids: true
+  check_ports: true
+  check_if: true
+  
+  rootkit_files:
+    - "/tmp/.ICE-unix/..."
+    - "/tmp/.font-unix/..."
+    - "/tmp/.Test-unix/..."
+    - "/tmp/.X11-unix/..."
+
+# 📝 Log Monitoring
+wazuh_agent_logcollector:
+  enabled: true
+  
+  localfiles:
+    linux:
+      - location: "/var/log/auth.log"
+        log_format: "syslog"
+      - location: "/var/log/syslog"
+        log_format: "syslog"
+      - location: "/var/log/dpkg.log"
+        log_format: "syslog"
+      - location: "/var/log/kern.log"
+        log_format: "syslog"
+        
+    windows:
+      - location: "Security"
+        log_format: "eventchannel"
+      - location: "System"  
+        log_format: "eventchannel"
+      - location: "Application"
+        log_format: "eventchannel"
+
+# 🛡️ Vulnerability Detection
+wazuh_agent_vulnerability_detector:
+  enabled: "{{ wazuh_agent_vulnerability_detector | default(true) }}"
+  
+# 🔄 Active Response
+wazuh_agent_active_response:
+  disabled: false
+  ca_verification: true
+  
+# 📊 Performance Configuration
+wazuh_agent_performance:
+  # Buffer settings
+  agent_buffer: 8192
+  events_per_second: 500
+  
+  # Connection settings
+  recv_timeout: 60
+  
+  # Log settings
+  max_files: 1000
+  
+# 🔧 Platform-specific Configuration
+wazuh_agent_platform_config:
+  linux:
+    service_name: wazuh-agent
+    config_file: /var/ossec/etc/ossec.conf
+    log_file: /var/ossec/logs/ossec.log
+    installation_dir: /var/ossec
+    
+  windows:
+    service_name: WazuhSvc
+    config_file: "C:\Program Files (x86)\ossec-agent\ossec.conf"
+    log_file: "C:\Program Files (x86)\ossec-agent\ossec.log"
+    installation_dir: "C:\Program Files (x86)\ossec-agent"
+
+# 🚀 Startup Configuration
+wazuh_agent_startup:
+  enabled: true
+  state: started
+  restart_on_config_change: true
+
+# 📈 Monitoring Configuration
+wazuh_agent_monitoring:
+  # Internal statistics
+  internal_options:
+    agent.recv_timeout: 60
+    agent.notify_time: 10
+    agent.max_restart_lock: 600
+    
+  # Log level
+  debug_level: 1
+  
+# 🔒 Security Configuration
+wazuh_agent_security:
+  # Encryption
+  enrollment_use_ssl: true
+  
+  # Authentication
+  enrollment_password: "{{ wazuh_enrollment_password | default('') }}"
+  
+  # Network security
+  allowed_managers: 
+    - "{{ wazuh_manager_ip | default(hostvars[groups['wazuh_manager'][0]]['ansible_default_ipv4']['address']) }}"
+
+# 🔄 Update Configuration
+wazuh_agent_updates:
+  auto_update_enabled: "{{ enable_agent_auto_update | default(false) }}"
+  update_schedule: "0 2 * * *"  # Daily at 2 AM
+  
+# 📋 Group-specific Configuration
+wazuh_agent_groups_config:
+  default:
+    syscheck_frequency: 43200
+    rootcheck_frequency: 86400
+    
+  web-servers:
+    syscheck_frequency: 21600  # 6 hours
+    rootcheck_frequency: 43200  # 12 hours
+    additional_directories:
+      - "/var/www"
+      - "/etc/nginx"
+      - "/etc/apache2"
+    additional_logs:
+      - "/var/log/nginx/access.log"
+      - "/var/log/nginx/error.log"
+      - "/var/log/apache2/access.log"
+      - "/var/log/apache2/error.log"
+      
+  database-servers:
+    syscheck_frequency: 21600  # 6 hours
+    rootcheck_frequency: 43200  # 12 hours
+    additional_directories:
+      - "/var/lib/mysql"
+      - "/etc/mysql"
+      - "/var/lib/postgresql"
+      - "/etc/postgresql"
+    additional_logs:
+      - "/var/log/mysql/error.log"
+      - "/var/log/mysql/mysql.log"
+      - "/var/log/postgresql/postgresql.log"

@@ -1,0 +1,266 @@
+---
+# Wazuh Unified Installer - Ansible Inventory Template
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+#
+# 📋 CONFIGURATION INSTRUCTIONS:
+# 1. Copy this file: cp inventory_template.yml inventory.yml
+# 2. Configure your target hosts below
+# 3. Set appropriate variables for your environment
+# 4. Run: ansible-playbook -i inventory.yml ansible_deploy.yml
+
+# 🌐 DEPLOYMENT SCENARIOS:
+# Uncomment the scenario that matches your deployment needs
+
+# ==========================================
+# 🔧 SCENARIO 1: SINGLE-NODE DEPLOYMENT
+# ==========================================
+# Perfect for testing, development, or small environments
+# All components installed on a single server
+
+all:
+  children:
+    wazuh_cluster:
+      children:
+        wazuh_manager:
+          hosts:
+            wazuh-server:
+              ansible_host: 192.168.1.100
+              ansible_user: ubuntu
+              ansible_ssh_private_key_file: ~/.ssh/id_rsa
+              # Component configuration
+              wazuh_manager_type: master
+              install_indexer: true
+              install_dashboard: true
+              
+        # For single-node, indexer and dashboard run on same host
+        wazuh_indexer:
+          hosts:
+            wazuh-server:
+              ansible_host: 192.168.1.100
+              
+        wazuh_dashboard:
+          hosts:
+            wazuh-server:
+              ansible_host: 192.168.1.100
+              
+    # Optional: Define some test agents
+    wazuh_agents:
+      hosts:
+        test-agent-01:
+          ansible_host: 192.168.1.150
+          ansible_user: ubuntu
+          wazuh_agent_group: test-servers
+
+# ==========================================
+# 🏢 SCENARIO 2: MULTI-NODE CLUSTER
+# ==========================================
+# Production deployment with dedicated servers for each component
+# Uncomment and configure the section below for cluster deployment
+
+# all:
+#   children:
+#     wazuh_cluster:
+#       children:
+#         wazuh_manager:
+#           hosts:
+#             manager-01:
+#               ansible_host: 192.168.1.100
+#               ansible_user: ubuntu
+#               wazuh_manager_type: master
+#               wazuh_cluster_node_name: manager-01
+#             manager-02:
+#               ansible_host: 192.168.1.101
+#               ansible_user: ubuntu
+#               wazuh_manager_type: worker
+#               wazuh_cluster_node_name: manager-02
+#               
+#         wazuh_indexer:
+#           hosts:
+#             indexer-01:
+#               ansible_host: 192.168.1.110
+#               ansible_user: ubuntu
+#               wazuh_indexer_node_name: indexer-01
+#               wazuh_indexer_node_type: master
+#             indexer-02:
+#               ansible_host: 192.168.1.111
+#               ansible_user: ubuntu
+#               wazuh_indexer_node_name: indexer-02
+#               wazuh_indexer_node_type: data
+#             indexer-03:
+#               ansible_host: 192.168.1.112
+#               ansible_user: ubuntu
+#               wazuh_indexer_node_name: indexer-03
+#               wazuh_indexer_node_type: data
+#               
+#         wazuh_dashboard:
+#           hosts:
+#             dashboard-01:
+#               ansible_host: 192.168.1.120
+#               ansible_user: ubuntu
+#               wazuh_dashboard_node: primary
+#             dashboard-02:
+#               ansible_host: 192.168.1.121
+#               ansible_user: ubuntu
+#               wazuh_dashboard_node: secondary
+#               
+#     # Production agents organized by function
+#     wazuh_agents:
+#       children:
+#         web_servers:
+#           hosts:
+#             web-[01:10]:
+#               ansible_host: 192.168.2.[10:19]
+#               ansible_user: ubuntu
+#               wazuh_agent_group: web-servers
+#         database_servers:
+#           hosts:
+#             db-[01:05]:
+#               ansible_host: 192.168.3.[10:14]
+#               ansible_user: ubuntu
+#               wazuh_agent_group: database-servers
+#         application_servers:
+#           hosts:
+#             app-[01:20]:
+#               ansible_host: 192.168.4.[10:29]
+#               ansible_user: ubuntu
+#               wazuh_agent_group: application-servers
+
+# ==========================================
+# 🔒 GLOBAL VARIABLES
+# ==========================================
+# These variables apply to all hosts unless overridden
+
+  vars:
+    # 🌍 Environment Configuration
+    target_environment: production
+    deployment_name: wazuh-cluster
+    
+    # 🔐 Security Settings
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
+    ansible_become: true
+    ansible_become_method: sudo
+    
+    # 📦 Wazuh Version Configuration
+    wazuh_version: "4.7.0"
+    wazuh_revision: "1"
+    
+    # 🌐 Network Configuration
+    wazuh_manager_port: 1514
+    wazuh_manager_api_port: 55000
+    wazuh_indexer_port: 9200
+    wazuh_dashboard_port: 443
+    
+    # 🔧 Installation Options
+    validate_connectivity: true
+    deploy_agents: true
+    validate_installation: true
+    
+    # 🛡️ Security Options
+    generate_certificates: true
+    enable_ssl: true
+    change_default_passwords: true
+    
+    # ⚡ Performance Options
+    auto_tune_system: true
+    optimize_for_environment: true
+    
+    # 📊 Monitoring Options
+    enable_monitoring: true
+    setup_log_rotation: true
+    
+    # 🔄 Backup Options
+    enable_backup: false
+    backup_schedule: "0 2 * * *"  # Daily at 2 AM
+    backup_retention_days: 30
+
+# ==========================================
+# 🏷️ GROUP-SPECIFIC VARIABLES
+# ==========================================
+# Override global settings for specific component groups
+
+    # Manager-specific settings
+    wazuh_manager:
+      vars:
+        # Manager cluster configuration
+        wazuh_cluster_enabled: true
+        wazuh_cluster_name: wazuh-cluster
+        wazuh_cluster_key: "{{ vault_cluster_key | default('MySecretClusterKey123') }}"
+        
+        # Manager performance tuning
+        wazuh_manager_max_agents: 10000
+        wazuh_manager_analysis_threads: 4
+        wazuh_manager_agent_buffer: 8192
+        
+        # Integration settings
+        enable_virustotal: false
+        enable_osquery: true
+        enable_vulnerability_detector: true
+        
+    # Indexer-specific settings
+    wazuh_indexer:
+      vars:
+        # Cluster configuration
+        wazuh_indexer_cluster_name: wazuh-indexer-cluster
+        wazuh_indexer_cluster_initial_master_nodes: "['indexer-01']"
+        
+        # Performance settings
+        wazuh_indexer_heap_size: "2g"
+        wazuh_indexer_max_open_files: 65536
+        
+        # Index management
+        wazuh_indexer_index_replicas: 1
+        wazuh_indexer_index_shards: 3
+        wazuh_indexer_index_max_age: "30d"
+        
+    # Dashboard-specific settings
+    wazuh_dashboard:
+      vars:
+        # Dashboard configuration
+        wazuh_dashboard_bind_host: "0.0.0.0"
+        wazuh_dashboard_server_name: "{{ ansible_fqdn }}"
+        
+        # SSL configuration
+        wazuh_dashboard_ssl_enabled: true
+        wazuh_dashboard_ssl_cert: "/etc/ssl/certs/wazuh-dashboard.crt"
+        wazuh_dashboard_ssl_key: "/etc/ssl/private/wazuh-dashboard.key"
+        
+    # Agent-specific settings  
+    wazuh_agents:
+      vars:
+        # Agent configuration
+        wazuh_agent_config_profile: production
+        wazuh_agent_log_format: json
+        wazuh_agent_enrollment_enabled: true
+        
+        # Monitoring configuration
+        wazuh_agent_syscheck_frequency: 43200  # 12 hours
+        wazuh_agent_rootcheck_frequency: 86400  # 24 hours
+        wazuh_agent_vulnerability_detector: true
+
+# ==========================================
+# 🎯 PLATFORM-SPECIFIC EXAMPLES
+# ==========================================
+
+# 📱 For Ubuntu/Debian hosts:
+# ansible_python_interpreter: /usr/bin/python3
+# package_manager: apt
+
+# 🏢 For CentOS/RHEL hosts:
+# ansible_python_interpreter: /usr/bin/python3
+# package_manager: yum
+
+# ☁️  For Amazon Linux hosts:
+# ansible_python_interpreter: /usr/bin/python3
+# package_manager: yum
+# cloud_provider: aws
+
+# ==========================================
+# 🔐 VAULT VARIABLES (if using Ansible Vault)
+# ==========================================
+# Create vault file: ansible-vault create group_vars/all/vault.yml
+# vault_cluster_key: "YourSecretClusterKey"
+# vault_api_password: "YourSecretAPIPassword"
+# vault_dashboard_password: "YourSecretDashboardPassword"

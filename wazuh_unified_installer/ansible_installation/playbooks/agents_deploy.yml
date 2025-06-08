@@ -1,0 +1,277 @@
+---
+# Wazuh Unified Installer - Agents Deployment Playbook
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Wazuh Agents Deployment
+  hosts: wazuh_agents
+  become: true
+  gather_facts: true
+  serial: "{{ wazuh_agents_batch_size | default('20%') }}"
+  vars:
+    component_name: "Wazuh Agent"
+    deployment_batch: "{{ ansible_play_batch }}"
+    
+  pre_tasks:
+    - name: Display agent deployment information
+      debug:
+        msg: |
+          👥 Deploying {{ component_name }} on {{ inventory_hostname }}
+          📦 Version: {{ wazuh_version | default('4.7.0') }}
+          🎯 Agent Group: {{ wazuh_agent_group | default('default') }}
+          🛡️  Manager: {{ wazuh_manager_ip | default(groups['wazuh_manager'][0]) }}
+          📊 Batch: {{ ansible_play_batch.index(inventory_hostname) + 1 }}/{{ ansible_play_batch | length }}
+          
+    - name: Validate manager connectivity
+      wait_for:
+        host: "{{ wazuh_manager_ip | default(hostvars[groups['wazuh_manager'][0]]['ansible_default_ipv4']['address']) }}"
+        port: "{{ wazuh_manager_port | default(1514) }}"
+        timeout: 60
+      when: 
+        - validate_manager_connectivity | default(true)
+        - groups['wazuh_manager'] is defined
+        
+    - name: Check for existing agent installation
+      stat:
+        path: /var/ossec/bin/wazuh-control
+      register: existing_agent
+      
+    - name: Display existing installation status
+      debug:
+        msg: |
+          {{ '🔄 Existing installation found - will update/reconfigure' if existing_agent.stat.exists else '🆕 Fresh installation' }}
+      
+  roles:
+    - role: wazuh_agent
+      tags:
+        - wazuh_agent
+        - agent
+        - agents
+        
+  post_tasks:
+    - name: Verify agent installation
+      command: /var/ossec/bin/wazuh-control status
+      register: agent_status
+      changed_when: false
+      tags:
+        - verification
+        - agent
+        
+    - name: Verify agent connectivity to manager
+      command: /var/ossec/bin/agent_control -l
+      register: agent_connectivity
+      changed_when: false
+      delegate_to: "{{ groups['wazuh_manager'][0] }}"
+      when: 
+        - groups['wazuh_manager'] is defined
+        - verify_agent_connectivity | default(true)
+      tags:
+        - verification
+        - connectivity
+        
+    - name: Display agent status
+      debug:
+        msg: |
+          ✅ {{ component_name }} successfully deployed on {{ inventory_hostname }}
+          📊 Status: {{ 'Running' if 'wazuh-agentd is running' in agent_status.stdout else 'Stopped' }}
+          🔗 Connected: {{ 'Yes' if inventory_hostname in agent_connectivity.stdout else 'No' }}
+          🆔 Agent ID: {{ wazuh_agent_id | default('auto-assigned') }}
+          🎯 Group: {{ wazuh_agent_group | default('default') }}
+
+- name: Agent Group Management
+  hosts: wazuh_manager[0]
+  become: true
+  gather_facts: false
+  run_once: true
+  vars:
+    agent_groups_to_create: "{{ groups['wazuh_agents'] | map('extract', hostvars, 'wazuh_agent_group') | list | unique | default(['default']) }}"
+    
+  tasks:
+    - name: Create agent groups on manager
+      command: /var/ossec/bin/agent_groups -a -g "{{ item }}"
+      loop: "{{ agent_groups_to_create }}"
+      register: group_creation
+      changed_when: "'Group added' in group_creation.stdout"
+      failed_when: 
+        - group_creation.rc != 0
+        - "'already exists' not in group_creation.stderr"
+      tags:
+        - agent-groups
+        - manager
+        
+    - name: Configure group-specific rules (if defined)
+      copy:
+        content: "{{ wazuh_agent_groups[item].rules | default('') }}"
+        dest: "/var/ossec/etc/shared/{{ item }}/agent.conf"
+        owner: ossec
+        group: ossec
+        mode: '0644'
+      loop: "{{ agent_groups_to_create }}"
+      when: 
+        - wazuh_agent_groups is defined
+        - wazuh_agent_groups[item] is defined
+        - wazuh_agent_groups[item].rules is defined
+      notify: restart wazuh-manager
+      tags:
+        - agent-groups
+        - configuration
+        
+    - name: Assign agents to groups
+      command: /var/ossec/bin/agent_groups -a -i "{{ hostvars[item]['wazuh_agent_id'] | default('auto') }}" -g "{{ hostvars[item]['wazuh_agent_group'] | default('default') }}"
+      loop: "{{ groups['wazuh_agents'] }}"
+      register: group_assignment
+      changed_when: "'Group assigned' in group_assignment.stdout"
+      failed_when: 
+        - group_assignment.rc != 0
+        - "'already belongs' not in group_assignment.stderr"
+      when: assign_agents_to_groups | default(true)
+      tags:
+        - agent-groups
+        - assignment
+
+- name: Agent Health Check and Monitoring Setup
+  hosts: wazuh_agents
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Configure agent monitoring
+      include_role:
+        name: wazuh_agent
+        tasks_from: monitoring
+      when: enable_agent_monitoring | default(true)
+      tags:
+        - monitoring
+        - agent
+        
+    - name: Configure log rotation for agents
+      include_role:
+        name: common
+        tasks_from: logrotate
+      vars:
+        logrotate_configs:
+          - name: wazuh-agent
+            path: /var/ossec/logs/*.log
+            options:
+              - daily
+              - missingok
+              - rotate 30
+              - compress
+              - notifempty
+              - create 0644 ossec ossec
+      when: setup_log_rotation | default(true)
+      tags:
+        - logrotate
+        - agent
+        
+    - name: Set up agent auto-update (if enabled)
+      include_role:
+        name: wazuh_agent
+        tasks_from: auto_update
+      when: enable_agent_auto_update | default(false)
+      tags:
+        - auto-update
+        - agent
+
+- name: Agent Deployment Validation
+  hosts: wazuh_manager[0]
+  become: true
+  gather_facts: false
+  run_once: true
+  
+  tasks:
+    - name: Get list of connected agents
+      command: /var/ossec/bin/agent_control -l
+      register: connected_agents
+      changed_when: false
+      tags:
+        - validation
+        - connectivity
+        
+    - name: Parse agent connection status
+      set_fact:
+        total_agents: "{{ groups['wazuh_agents'] | length }}"
+        connected_count: "{{ connected_agents.stdout_lines | select('match', '.*Active.*') | list | length }}"
+        disconnected_agents: "{{ connected_agents.stdout_lines | select('match', '.*Disconnected.*') | list }}"
+      tags:
+        - validation
+        - statistics
+        
+    - name: Display connection summary
+      debug:
+        msg: |
+          📊 Agent Connection Summary:
+          ├── 👥 Total Agents: {{ total_agents }}
+          ├── ✅ Connected: {{ connected_count }}
+          ├── ❌ Disconnected: {{ total_agents | int - connected_count | int }}
+          └── 📈 Connection Rate: {{ (connected_count | int / total_agents | int * 100) | round(1) }}%
+      tags:
+        - validation
+        - summary
+        
+    - name: Alert on disconnected agents
+      debug:
+        msg: |
+          ⚠️  Warning: {{ total_agents | int - connected_count | int }} agents are disconnected:
+          {{ disconnected_agents | join('
+') }}
+      when: 
+        - connected_count | int < total_agents | int
+        - alert_on_disconnected | default(true)
+      tags:
+        - validation
+        - alerts
+
+- name: Agent Deployment Summary
+  hosts: localhost
+  gather_facts: false
+  run_once: true
+  
+  tasks:
+    - name: Generate agent deployment summary
+      debug:
+        msg: |
+          🎉 Wazuh Agents Deployment Summary
+          ===================================
+          
+          📊 Deployment Statistics:
+          ├── 👥 Total Agents Deployed: {{ groups['wazuh_agents'] | length }}
+          ├── 🎯 Agent Groups: {{ groups['wazuh_agents'] | map('extract', hostvars, 'wazuh_agent_group') | list | unique | length }}
+          ├── 📦 Version: {{ wazuh_version | default('4.7.0') }}
+          └── 🎪 Batch Size: {{ wazuh_agents_batch_size | default('20%') }}
+          
+          🏷️  Agent Groups:
+          {% for group in groups['wazuh_agents'] | map('extract', hostvars, 'wazuh_agent_group') | list | unique | sort %}
+          ├── {{ group }}: {{ groups['wazuh_agents'] | selectattr('wazuh_agent_group', 'defined') | selectattr('wazuh_agent_group', 'equalto', group) | list | length }} agents
+          {% endfor %}
+          
+          🌐 Manager Information:
+          {% if groups['wazuh_manager'] is defined %}
+          {% for host in groups['wazuh_manager'] %}
+          ├── {{ host }}: {{ hostvars[host]['ansible_default_ipv4']['address'] }}:1514
+          {% endfor %}
+          {% endif %}
+          
+          🔧 Configuration:
+          ├── 🔄 Auto-Update: {{ 'Enabled' if enable_agent_auto_update else 'Disabled' }}
+          ├── 📊 Monitoring: {{ 'Enabled' if enable_agent_monitoring else 'Disabled' }}
+          ├── 📝 Log Rotation: {{ 'Enabled' if setup_log_rotation else 'Disabled' }}
+          └── 🎯 Environment: {{ target_environment | default('production') }}
+          
+          📋 Post-Deployment Actions:
+          ├── 1️⃣  Validate agent connectivity: ansible-playbook playbooks/validate.yml -t agents
+          ├── 2️⃣  Configure custom agent rules for groups
+          ├── 3️⃣  Set up alerting for disconnected agents
+          ├── 4️⃣  Configure agent-specific monitoring policies
+          └── 5️⃣  Review agent logs: /var/ossec/logs/ossec.log
+          
+          🕐 Deployment completed at: {{ ansible_date_time.iso8601 }}
+          
+  handlers:
+    - name: restart wazuh-manager
+      systemd:
+        name: wazuh-manager
+        state: restarted
+      delegate_to: "{{ groups['wazuh_manager'] }}"

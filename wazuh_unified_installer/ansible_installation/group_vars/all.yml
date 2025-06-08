@@ -1,0 +1,195 @@
+---
+# Wazuh Unified Installer - Global Variables
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# 🌍 Global Environment Configuration
+target_environment: "{{ target_environment | default('production') }}"
+deployment_name: "{{ deployment_name | default('wazuh-cluster') }}"
+
+# 📦 Wazuh Version Configuration
+wazuh_version: "4.7.0"
+wazuh_revision: "1"
+
+# 🔐 Security Configuration
+enable_ssl: true
+generate_certificates: true
+change_default_passwords: true
+certificate_validity_days: 365
+
+# Default passwords (should be overridden in vault)
+wazuh_api_password: "{{ vault_wazuh_api_password | default('SecureAPIPassword123') }}"
+wazuh_indexer_admin_password: "{{ vault_indexer_admin_password | default('SecureIndexerPassword123') }}"
+wazuh_dashboard_admin_password: "{{ vault_dashboard_admin_password | default('SecureDashboardPassword123') }}"
+
+# 🌐 Network Configuration
+wazuh_manager_port: 1514
+wazuh_manager_api_port: 55000
+wazuh_indexer_port: 9200
+wazuh_indexer_performance_analyzer_port: 9600
+wazuh_dashboard_port: 443
+
+# 🔧 Installation Options
+validate_connectivity: true
+validate_system_requirements: true
+auto_tune_system: true
+optimize_for_environment: true
+
+# 📊 Monitoring Configuration
+enable_monitoring: true
+setup_log_rotation: true
+log_retention_days: 30
+
+# 🔄 Backup Configuration
+enable_backup: false
+backup_schedule: "0 2 * * *"  # Daily at 2 AM
+backup_retention_days: 30
+backup_directory: "/opt/wazuh/backups"
+
+# 🚀 Performance Tuning
+system_optimization:
+  enable_kernel_tuning: true
+  enable_network_tuning: true
+  enable_filesystem_tuning: true
+  
+# 🔥 Firewall Configuration
+firewall_enabled: true
+firewall_default_policy: "deny"
+firewall_allowed_networks:
+  - "{{ ansible_default_ipv4.network }}/{{ ansible_default_ipv4.netmask }}"
+
+# 📋 Package Management
+package_update_cache: true
+package_install_recommends: false
+
+# 🐧 Platform-specific configurations
+platform_configs:
+  Ubuntu:
+    package_manager: apt
+    service_manager: systemd
+    user_shell: /bin/bash
+  CentOS:
+    package_manager: yum
+    service_manager: systemd
+    user_shell: /bin/bash
+  RedHat:
+    package_manager: yum
+    service_manager: systemd
+    user_shell: /bin/bash
+  Debian:
+    package_manager: apt
+    service_manager: systemd
+    user_shell: /bin/bash
+
+# 👤 User Configuration
+wazuh_user: ossec
+wazuh_group: ossec
+wazuh_home: /var/ossec
+
+# 📁 Directory Configuration
+wazuh_config_dir: "{{ wazuh_home }}/etc"
+wazuh_log_dir: "{{ wazuh_home }}/logs"
+wazuh_rules_dir: "{{ wazuh_home }}/etc/rules"
+wazuh_decoders_dir: "{{ wazuh_home }}/etc/decoders"
+
+# 🔍 Logging Configuration
+log_level: INFO
+enable_debug_logging: false
+log_formats:
+  manager: json
+  agent: json
+  dashboard: json
+
+# 🎯 Deployment Options
+deployment_options:
+  skip_validation: false
+  force_install: false
+  parallel_execution: true
+  rollback_on_failure: true
+
+# 🔧 Advanced Configuration
+advanced_options:
+  custom_rules_enabled: true
+  vulnerability_detection_enabled: true
+  integrity_monitoring_enabled: true
+  log_analysis_enabled: true
+  incident_response_enabled: true
+
+# 📡 Integration Configuration
+integrations:
+  virustotal:
+    enabled: false
+    api_key: "{{ vault_virustotal_api_key | default('') }}"
+  
+  slack:
+    enabled: false
+    webhook_url: "{{ vault_slack_webhook | default('') }}"
+  
+  email:
+    enabled: false
+    smtp_server: "{{ vault_smtp_server | default('') }}"
+    smtp_port: 587
+    smtp_user: "{{ vault_smtp_user | default('') }}"
+    smtp_password: "{{ vault_smtp_password | default('') }}"
+
+# 🏷️ Tagging Configuration
+resource_tags:
+  Environment: "{{ target_environment }}"
+  Project: "wazuh-unified-installer"
+  ManagedBy: "ansible"
+  Owner: "security-team"
+  
+# 📊 Metrics and Monitoring
+metrics:
+  collection_enabled: true
+  retention_period: "90d"
+  prometheus_enabled: false
+  grafana_enabled: false
+
+# 🔄 Update Configuration
+auto_update:
+  enabled: false
+  schedule: "0 3 * * 0"  # Weekly on Sunday at 3 AM
+  backup_before_update: true
+  rollback_on_failure: true
+
+# 🌐 Cloud Provider Specific (if applicable)
+cloud_provider: "{{ cloud_provider | default('none') }}"
+cloud_configs:
+  aws:
+    region: "{{ aws_region | default('us-east-1') }}"
+    use_iam_roles: true
+  
+  azure:
+    region: "{{ azure_region | default('East US') }}"
+    use_managed_identity: true
+  
+  gcp:
+    project: "{{ gcp_project | default('') }}"
+    region: "{{ gcp_region | default('us-central1') }}"
+
+# 🛡️ Security Hardening
+security_hardening:
+  disable_unnecessary_services: true
+  configure_fail2ban: true
+  setup_intrusion_detection: true
+  enable_audit_logging: true
+  configure_selinux: true  # For RHEL/CentOS
+  configure_apparmor: true  # For Ubuntu/Debian
+
+# 📋 Compliance Configuration
+compliance:
+  pci_dss: false
+  gdpr: false
+  hipaa: false
+  sox: false
+  custom_policies: []
+
+# 🔍 Troubleshooting Configuration
+troubleshooting:
+  enable_debug_mode: false
+  capture_network_traffic: false
+  extended_logging: false
+  performance_monitoring: true

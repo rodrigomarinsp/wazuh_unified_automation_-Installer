@@ -1,0 +1,39 @@
+---
+# Wazuh Unified Installer - Indexer Role Meta
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+galaxy_info:
+  author: Rodrigo Marins Piaba
+  description: Wazuh Indexer installation and configuration
+  company: Fanaticos4tech
+  license: GPL-3.0
+  min_ansible_version: 2.12
+  
+  platforms:
+    - name: Ubuntu
+      versions:
+        - 18.04
+        - 20.04
+        - 22.04
+    - name: Debian
+      versions:
+        - 10
+        - 11
+        - 12
+    - name: EL
+      versions:
+        - 7
+        - 8
+        - 9
+
+  galaxy_tags:
+    - wazuh
+    - indexer
+    - opensearch
+    - elasticsearch
+
+dependencies:
+  - role: common

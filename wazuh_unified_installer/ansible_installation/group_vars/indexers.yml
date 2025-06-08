@@ -1,0 +1,136 @@
+---
+# Wazuh Unified Installer - Indexer Group Variables
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# 🔍 Wazuh Indexer Configuration
+wazuh_indexer_config:
+  cluster:
+    name: "{{ deployment_name | default('wazuh-indexer-cluster') }}"
+    initial_master_nodes: "{{ groups['wazuh_indexer'] | map('extract', hostvars, 'inventory_hostname') | list }}"
+    
+  network:
+    host: "{{ ansible_default_ipv4.address }}"
+    bind_host: "{{ ansible_default_ipv4.address }}"
+    publish_host: "{{ ansible_default_ipv4.address }}"
+    
+  node:
+    name: "{{ wazuh_indexer_node_name | default(inventory_hostname) }}"
+    master: "{{ wazuh_indexer_node_type == 'master' or groups['wazuh_indexer'] | length == 1 }}"
+    data: true
+    ingest: true
+    max_local_storage_nodes: 1
+
+# 🚀 Performance Configuration
+wazuh_indexer_performance:
+  heap_size: "{{ wazuh_indexer_heap_size | default('2g') }}"
+  max_open_files: 65536
+  max_locked_memory: unlimited
+  
+  # Thread pools
+  thread_pools:
+    search:
+      size: "{{ ansible_processor_vcpus }}"
+      queue_size: 1000
+    write:
+      size: "{{ ansible_processor_vcpus }}"
+      queue_size: 10000
+    index:
+      size: "{{ ansible_processor_vcpus }}"
+      queue_size: 200
+
+# 🔐 Security Configuration  
+wazuh_indexer_security:
+  admin_password: "{{ wazuh_indexer_admin_password }}"
+  ssl_enabled: true
+  ssl_verification_mode: full
+  
+  certificates:
+    admin:
+      cert: "{{ wazuh_home }}/etc/indexer-admin.pem"
+      key: "{{ wazuh_home }}/etc/indexer-admin-key.pem"
+    node:
+      cert: "{{ wazuh_home }}/etc/indexer.pem"
+      key: "{{ wazuh_home }}/etc/indexer-key.pem"
+    root_ca: "{{ wazuh_home }}/etc/root-ca.pem"
+
+# 📊 Index Management
+wazuh_indexer_indices:
+  default_settings:
+    number_of_shards: 3
+    number_of_replicas: 1
+    max_result_window: 100000
+    
+  index_patterns:
+    - name: "wazuh-alerts-*"
+      settings:
+        number_of_shards: 3
+        number_of_replicas: 1
+      mappings:
+        properties:
+          timestamp:
+            type: date
+          agent:
+            properties:
+              id:
+                type: keyword
+              name:
+                type: keyword
+          rule:
+            properties:
+              level:
+                type: integer
+              description:
+                type: text
+
+# 🔄 Lifecycle Management
+wazuh_indexer_ilm:
+  policies:
+    - name: wazuh-alerts-policy
+      phases:
+        hot:
+          actions:
+            rollover:
+              max_size: "50gb"
+              max_age: "1d"
+        warm:
+          min_age: "1d"
+          actions:
+            allocate:
+              number_of_replicas: 0
+        cold:
+          min_age: "7d"
+          actions:
+            allocate:
+              number_of_replicas: 0
+        delete:
+          min_age: "30d"
+
+# 📈 Monitoring Configuration
+wazuh_indexer_monitoring:
+  enabled: true
+  collection_enabled: true
+  interval: "10s"
+  
+  # Cluster health monitoring
+  cluster_health_timeout: "30s"
+  
+  # Performance monitoring
+  performance_analyzer:
+    enabled: true
+    port: "{{ wazuh_indexer_performance_analyzer_port | default(9600) }}"
+    
+# 🔧 Advanced Settings
+wazuh_indexer_advanced:
+  discovery:
+    seed_hosts: "{{ groups['wazuh_indexer'] | map('extract', hostvars, 'ansible_default_ipv4') | map(attribute='address') | list }}"
+    zen_minimum_master_nodes: "{{ ((groups['wazuh_indexer'] | length) / 2) | round(0, 'ceil') | int }}"
+    
+  gateway:
+    expected_master_nodes: "{{ groups['wazuh_indexer'] | length }}"
+    expected_data_nodes: "{{ groups['wazuh_indexer'] | length }}"
+    recover_after_master_nodes: "{{ ((groups['wazuh_indexer'] | length) / 2) | round(0, 'ceil') | int }}"
+    recover_after_data_nodes: "{{ ((groups['wazuh_indexer'] | length) / 2) | round(0, 'ceil') | int }}"
+    recover_after_time: "5m"

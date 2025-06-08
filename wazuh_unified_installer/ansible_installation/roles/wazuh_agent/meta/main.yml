@@ -1,0 +1,6 @@
+---
+galaxy_info:
+  author: Rodrigo Marins Piaba
+  description: Wazuh Agent
+dependencies:
+  - role: common

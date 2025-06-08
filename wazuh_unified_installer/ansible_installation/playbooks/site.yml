@@ -1,0 +1,133 @@
+---
+# Wazuh Unified Installer - Site Playbook (Common Prerequisites)
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Common Prerequisites for All Wazuh Components
+  hosts: wazuh_cluster,wazuh_agents
+  become: true
+  gather_facts: true
+  vars:
+    deployment_phase: "{{ deployment_phase | default('prerequisites') }}"
+    
+  pre_tasks:
+    - name: Display host information
+      debug:
+        msg: |
+          🖥️  Preparing host: {{ inventory_hostname }}
+          🌐 IP Address: {{ ansible_default_ipv4.address | default(ansible_host) }}
+          🐧 OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          💾 Memory: {{ ansible_memtotal_mb }}MB
+          💿 Architecture: {{ ansible_architecture }}
+          
+    - name: Validate minimum system requirements
+      assert:
+        that:
+          - ansible_memtotal_mb >= 2048
+          - ansible_processor_vcpus >= 2
+        fail_msg: |
+          ❌ System does not meet minimum requirements:
+          - Required: 2GB RAM, 2 vCPUs
+          - Available: {{ ansible_memtotal_mb }}MB RAM, {{ ansible_processor_vcpus }} vCPUs
+        success_msg: "✅ System meets minimum requirements"
+      when: validate_system_requirements | default(true)
+
+  roles:
+    - role: common
+      tags:
+        - common
+        - prerequisites
+        
+  tasks:
+    - name: Display phase completion
+      debug:
+        msg: |
+          ✅ {{ deployment_phase | title }} phase completed for {{ inventory_hostname }}
+          🕐 Timestamp: {{ ansible_date_time.iso8601 }}
+
+- name: Wazuh Server Components Prerequisites
+  hosts: wazuh_manager,wazuh_indexer,wazuh_dashboard
+  become: true
+  gather_facts: false
+  vars:
+    deployment_phase: "{{ deployment_phase | default('server-prerequisites') }}"
+    
+  tasks:
+    - name: Configure Java for Wazuh components
+      include_role:
+        name: common
+        tasks_from: java
+      when: "'indexer' in group_names or 'dashboard' in group_names"
+      tags:
+        - java
+        - prerequisites
+        
+    - name: Configure certificates for server components
+      include_role:
+        name: common
+        tasks_from: certificates
+      when: generate_certificates | default(true)
+      tags:
+        - certificates
+        - ssl
+        - prerequisites
+        
+    - name: Configure cluster networking
+      include_role:
+        name: common
+        tasks_from: networking
+      when: wazuh_cluster_enabled | default(false)
+      tags:
+        - networking
+        - cluster
+        - prerequisites
+
+- name: Wazuh Agent Prerequisites
+  hosts: wazuh_agents
+  become: true
+  gather_facts: false
+  vars:
+    deployment_phase: "{{ deployment_phase | default('agent-prerequisites') }}"
+    
+  tasks:
+    - name: Configure agent-specific prerequisites
+      include_role:
+        name: common
+        tasks_from: agent_prep
+      tags:
+        - agents
+        - prerequisites
+        
+    - name: Test connectivity to Wazuh Manager
+      wait_for:
+        host: "{{ wazuh_manager_ip | default(groups['wazuh_manager'][0]) }}"
+        port: "{{ wazuh_manager_port | default(1514) }}"
+        timeout: 30
+      when: 
+        - test_manager_connectivity | default(true)
+        - groups['wazuh_manager'] is defined
+      tags:
+        - connectivity
+        - prerequisites
+
+- name: Final Prerequisites Validation
+  hosts: all
+  become: false
+  gather_facts: false
+  
+  tasks:
+    - name: Summarize prerequisites completion
+      debug:
+        msg: |
+          🎯 Prerequisites Summary for {{ inventory_hostname }}:
+          ✅ System validated
+          ✅ Common role applied
+          ✅ {{ deployment_phase | default('prerequisites') | title }} completed
+          🕐 Ready for next phase at: {{ ansible_date_time.iso8601 }}
+          
+    - name: Set prerequisites completion fact
+      set_fact:
+        wazuh_prerequisites_completed: true
+        wazuh_prerequisites_timestamp: "{{ ansible_date_time.iso8601 }}"

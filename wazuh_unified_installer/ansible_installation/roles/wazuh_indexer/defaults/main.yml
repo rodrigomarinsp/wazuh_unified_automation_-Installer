@@ -1,0 +1,31 @@
+---
+# Wazuh Unified Installer - Indexer Role Defaults
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# Indexer service configuration
+wazuh_indexer_service: wazuh-indexer
+
+# Java configuration
+java_version: 11
+java_heap_size: "{{ wazuh_indexer_heap_size | default('2g') }}"
+
+# Cluster configuration
+wazuh_indexer_cluster_enabled: true
+wazuh_indexer_cluster_name: "wazuh-indexer-cluster"
+
+# Network configuration
+wazuh_indexer_network_host: "{{ ansible_default_ipv4.address }}"
+wazuh_indexer_http_port: 9200
+wazuh_indexer_transport_port: 9300
+
+# Index configuration
+wazuh_indexer_index_replicas: 1
+wazuh_indexer_index_shards: 3
+wazuh_indexer_max_result_window: 100000
+
+# Security configuration
+wazuh_indexer_security_enabled: true
+import_index_templates: true

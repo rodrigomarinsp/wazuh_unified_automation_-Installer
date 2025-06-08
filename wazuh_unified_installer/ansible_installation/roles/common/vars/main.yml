@@ -1,0 +1,19 @@
+---
+# Wazuh Unified Installer - Common Role Variables
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# Repository configuration
+wazuh_repository_gpg_key: "https://packages.wazuh.com/key/GPG-KEY-WAZUH"
+
+# Certificate paths
+certificate_directory: "{{ wazuh_home }}/etc"
+ssl_cert_path: "{{ certificate_directory }}/wazuh.crt"
+ssl_key_path: "{{ certificate_directory }}/wazuh.key"
+ssl_ca_path: "{{ certificate_directory }}/root-ca.pem"
+
+# Common directories
+log_directory: "{{ wazuh_home }}/logs"
+backup_directory: "{{ wazuh_home }}/backup"

@@ -1,0 +1,88 @@
+---
+# Wazuh Unified Installer - Manager Role Tasks
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: Add Wazuh repository GPG key
+  apt_key:
+    url: "{{ wazuh_repository_gpg_key }}"
+    state: present
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Add Wazuh repository
+  apt_repository:
+    repo: "deb https://packages.wazuh.com/4.x/apt/ stable main"
+    state: present
+    filename: wazuh
+  when: ansible_os_family == "Debian"
+  tags:
+    - repository
+
+- name: Install Wazuh Manager
+  package:
+    name: "wazuh-manager={{ wazuh_version }}-{{ wazuh_revision }}"
+    state: present
+  notify:
+    - restart wazuh-manager
+  tags:
+    - install
+
+- name: Configure Wazuh Manager
+  template:
+    src: ossec.conf.j2
+    dest: "{{ wazuh_home }}/etc/ossec.conf"
+    owner: "{{ wazuh_user }}"
+    group: "{{ wazuh_group }}"
+    mode: '0640'
+    backup: yes
+  notify:
+    - restart wazuh-manager
+  tags:
+    - configuration
+
+- name: Configure Wazuh API
+  template:
+    src: api.yaml.j2
+    dest: "{{ wazuh_home }}/api/configuration/api.yaml"
+    owner: "{{ wazuh_user }}"
+    group: "{{ wazuh_group }}"
+    mode: '0640'
+    backup: yes
+  notify:
+    - restart wazuh-manager
+  tags:
+    - api
+    - configuration
+
+- name: Generate API credentials
+  command: "{{ wazuh_home }}/bin/wazuh-control enable-auth"
+  creates: "{{ wazuh_home }}/api/configuration/security/users"
+  notify:
+    - restart wazuh-manager
+  tags:
+    - api
+    - security
+
+- name: Start and enable Wazuh Manager
+  systemd:
+    name: wazuh-manager
+    state: started
+    enabled: yes
+  tags:
+    - service
+
+- name: Configure cluster (if enabled)
+  include_tasks: cluster.yml
+  when: wazuh_cluster_enabled | default(false)
+  tags:
+    - cluster
+
+- name: Create agent groups
+  include_tasks: agent_groups.yml
+  when: create_default_groups | default(true)
+  tags:
+    - agent-groups

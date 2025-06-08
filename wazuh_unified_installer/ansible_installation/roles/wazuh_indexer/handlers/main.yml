@@ -1,0 +1,18 @@
+---
+# Wazuh Unified Installer - Indexer Role Handlers
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: restart wazuh-indexer
+  systemd:
+    name: wazuh-indexer
+    state: restarted
+  listen: "restart wazuh-indexer"
+
+- name: reload wazuh-indexer
+  systemd:
+    name: wazuh-indexer
+    state: reloaded
+  listen: "reload wazuh-indexer"

@@ -1,0 +1,90 @@
+# Wazuh Unified Installer Configuration
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+# ===== INSTALLATION MODE =====
+# Only one installation mode can be active at a time
+installation_mode:
+  server_automated: true   # Standalone server installation (Manager + Indexer + Dashboard)
+  ansible_deployment: false # Multi-node deployment using Ansible
+  agent_only: false        # Agent-only installation
+  manual_guide: false      # Show manual installation steps (no actual installation)
+
+# ===== COMPONENT SELECTION =====
+# Select which components to install
+components:
+  wazuh_manager: true      # Wazuh Manager component
+  wazuh_indexer: true      # Wazuh Indexer (Elasticsearch) component
+  wazuh_dashboard: true    # Wazuh Dashboard (Kibana) component
+  filebeat: true           # Filebeat for log shipping
+  wazuh_agents: false      # Install agents automatically (only with ansible_deployment: true)
+
+# ===== ENVIRONMENT CONFIGURATION =====
+environment:
+  auto_detect: true        # Auto-detect environment settings
+  target_servers:          # Only used when auto_detect: false
+    manager: "127.0.0.1"   # Wazuh Manager IP/hostname
+    indexer: "127.0.0.1"   # Wazuh Indexer IP/hostname
+    dashboard: "127.0.0.1" # Wazuh Dashboard IP/hostname
+  domain_name: "wazuh.local" # Domain name (for certificates)
+  cluster_name: "wazuh"    # Wazuh cluster name
+
+# ===== NETWORK CONFIGURATION =====
+network:
+  manager_port: 1514       # Wazuh Manager port
+  registration_port: 1515  # Agent registration service port
+  api_port: 55000          # Wazuh API port
+  indexer_port: 9200       # Wazuh Indexer port
+  dashboard_port: 443      # Wazuh Dashboard port
+  use_internal_network: true # Use internal network for cluster communication
+
+# ===== AUTOMATION SETTINGS =====
+automation:
+  full_unattended: false   # Run completely unattended (no prompts)
+  auto_correct_errors: true # Attempt to auto-correct common errors
+  auto_install_dependencies: true # Automatically install required dependencies
+  auto_configure_firewall: true # Automatically configure firewall rules
+  auto_start_services: true # Automatically start services after installation
+  restart_on_failure: true # Restart failed services automatically
+
+# ===== SECURITY SETTINGS =====
+security:
+  generate_certificates: true # Generate certificates for secure communication
+  enable_ssl: true        # Enable SSL/TLS for all communications
+  enable_firewall: true   # Configure firewall settings during installation
+  change_default_passwords: true # Change default passwords
+  password_length: 16     # Length of generated passwords
+  admin_username: "wazuh-admin" # Admin username
+  # Leave admin_password empty for auto-generation (recommended for production)
+  admin_password: ""      # Admin password (leave empty to generate)
+  enable_rbac: true       # Enable Role-Based Access Control
+
+# ===== PERFORMANCE SETTINGS =====
+performance:
+  auto_tune_system: true  # Automatically tune system for better performance
+  optimize_for_environment: true # Optimize based on detected environment
+  memory_allocation:       # Memory allocation for components
+    indexer_heap: "50%"   # Percentage or explicit value (e.g. "4g")
+    manager_memory: "25%"  # Percentage or explicit value (e.g. "2g")
+  cpu_allocation:
+    indexer_cpu: 50       # Percentage of CPUs to use for indexer
+    manager_cpu: 25       # Percentage of CPUs to use for manager
+
+# ===== BACKUP & RECOVERY =====
+backup:
+  enable_backups: true    # Enable automatic backups
+  backup_path: "/var/backups/wazuh" # Path for backups
+  retention_days: 7       # Number of days to keep backups
+
+# ===== ADVANCED OPTIONS =====
+advanced:
+  debug_mode: false       # Enable extended debugging output
+  log_level: "info"       # Log level (debug, info, warning, error, critical)
+  log_path: "shared/logs" # Path for logs
+  temp_dir: "/tmp/wazuh-install" # Temporary directory for installation files
+  custom_packages: false  # Use custom package repositories
+  custom_repo_url: ""     # Custom repository URL (if custom_packages: true)
+  disable_selinux: true   # Temporarily disable SELinux during installation
+  disable_apparmor: false # Temporarily disable AppArmor during installation

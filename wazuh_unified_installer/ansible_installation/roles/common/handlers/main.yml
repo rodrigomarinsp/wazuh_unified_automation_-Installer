@@ -1,0 +1,21 @@
+---
+# Wazuh Unified Installer - Common Role Handlers
+# Author: Rodrigo Marins Piaba (Fanaticos4tech)
+# E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
+# GitHub: rodrigomarinsp
+# Instagram: @fanaticos4tech
+
+- name: reboot system
+  reboot:
+    reboot_timeout: 300
+  when: ansible_virtualization_type != "docker"
+
+- name: reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: restart firewall
+  service:
+    name: "{{ firewall_service }}"
+    state: restarted
+  when: firewall_enabled | default(true)
