@@ -459,3 +459,86 @@ journalctl -u wazuh-indexer -n 30
 ```
 
 If the flag is successfully removed, the JVM error will no longer occur and the service should start normally.
+
+---
+
+## ❗ Troubleshooting: JVM Error - AccessControlException due to Security Manager
+
+If you see the following error when starting `wazuh-indexer`:
+
+```
+Exception in thread "main" java.security.AccessControlException: access denied ...
+at java.lang.System.getProperty(System.java:967)
+...
+at org.opensearch.bootstrap.OpenSearch.overrideDnsCachePolicyProperties
+```
+
+It means that the Java Security Manager is enabled and is blocking access to required operations by OpenSearch.
+
+---
+
+### ✅ Root Cause
+
+The Java Security Manager is deprecated and not supported in OpenSearch (and Wazuh Indexer based on it).  
+However, it is explicitly enabled in the JVM options file:
+
+```bash
+/etc/wazuh-indexer/jvm.options
+/etc/wazuh-indexer/jvm.options.d/wazuh-indexer.options
+```
+
+The following lines are responsible for the failure:
+
+```
+-Djava.security.manager=allow
+-Djava.security.manager=default
+```
+
+---
+
+### 🛠️ How to Fix
+
+1. Edit both JVM options files:
+
+```bash
+sudo nano /etc/wazuh-indexer/jvm.options
+```
+
+→ Comment or remove the line:
+
+```
+# -Djava.security.manager=allow
+```
+
+Then:
+
+```bash
+sudo nano /etc/wazuh-indexer/jvm.options.d/wazuh-indexer.options
+```
+
+→ Comment or remove the line:
+
+```
+# -Djava.security.manager=default
+```
+
+2. Reload systemd and restart the service:
+
+```bash
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl restart wazuh-indexer
+```
+
+---
+
+### ✅ Validation
+
+After restarting, verify the service status:
+
+```bash
+sudo systemctl status wazuh-indexer
+journalctl -u wazuh-indexer -n 30
+```
+
+This should resolve the AccessControlException and allow the Wazuh Indexer to run properly without JVM restriction.
