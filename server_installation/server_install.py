@@ -2,14 +2,12 @@
 """
 Wazuh Server Installation Script - Python Implementation
 Author: Rodrigo Marins Piaba (Fanaticos4tech)
-Fixed by: AI Assistant for GPG Key Import Issues
 E-Mail: rodrigomarinsp@gmail.com / fanaticos4tech@gmail.com
 GitHub: rodrigomarinsp
 Instagram: @fanaticos4tech
 License: GPL-3.0
 
 ## Advanced Python installer with enhanced features, logging, and automation capabilities.
-## Fixed version addressing GPG key import and repository setup issues for Ubuntu 24.04
 """
 
 import argparse
@@ -34,27 +32,26 @@ from shutil import which
 # =============================================================================
 
 VERSION = "1.0.1"
-AUTHOR = "Rodrigo Marins Piaba (Fixed by AI Assistant)"
+AUTHOR = "Rodrigo Marins Piaba (Fanaticos4tech)"
 EMAIL = "rodrigomarinsp@gmail.com"
 GITHUB = "rodrigomarinsp"
 LICENSE = "GPL-3.0"
 
-# Wazuh configuration
-WAZUH_VERSION = "4.8.0"
-WAZUH_MAJOR_VERSION = "4.x"
-WAZUH_REPO_URL = "https://packages.wazuh.com"
-WAZUH_GPG_KEY_URL = f"{WAZUH_REPO_URL}/key/GPG-KEY-WAZUH"
+# Wazuh package versions and URLs
+WAZUH_VERSION = "4.7.2"
+WAZUH_MAJOR_VERSION = "4.7"
+WAZUH_REPO_BASE_URL = "https://packages.wazuh.com"
 
-# Default paths
-DEFAULT_INSTALL_DIR = "/var/ossec"
-DEFAULT_LOG_DIR = "/var/log/wazuh-installer"
-DEFAULT_CONFIG_DIR = "/etc/wazuh-installer"
-DEFAULT_CERT_DIR = "/etc/wazuh-indexer/certs"
+# System requirements
+MIN_RAM_GB = 2
+MIN_DISK_GB = 10
+REQUIRED_PACKAGES = ["curl", "wget", "gnupg", "apt-transport-https", "ca-certificates", "unzip"]
 
-# Service names
-WAZUH_MANAGER_SERVICE = "wazuh-manager"
-WAZUH_INDEXER_SERVICE = "wazuh-indexer"
-WAZUH_DASHBOARD_SERVICE = "wazuh-dashboard"
+# File paths
+WAZUH_CONFIG_DIR = "/var/ossec/etc"
+WAZUH_LOGS_DIR = "/var/ossec/logs"
+INDEXER_CONFIG_DIR = "/etc/wazuh-indexer"
+DASHBOARD_CONFIG_DIR = "/etc/wazuh-dashboard"
 
 # Network configuration
 DEFAULT_INDEXER_PORT = 9200
@@ -65,1049 +62,886 @@ DEFAULT_API_PORT = 55000
 # LOGGING CONFIGURATION
 # =============================================================================
 
-def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> logging.Logger:
-    """
-    Setup logging configuration with both console and file output.
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Configure logging with appropriate levels and formatting."""
+    log_level = logging.DEBUG if verbose else logging.INFO
     
-    Args:
-        log_level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        log_file: Optional log file path
-        
-    Returns:
-        Configured logger instance
-    """
     # Create logs directory if it doesn't exist
-    if log_file:
-        log_dir = os.path.dirname(log_file)
-        if log_dir and not os.path.exists(log_dir):
-            os.makedirs(log_dir, mode=0o755, exist_ok=True)
+    log_dir = Path("./logs")
+    log_dir.mkdir(exist_ok=True)
     
     # Configure logging format
     log_format = "%(asctime)s - %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
     
-    # Setup root logger
+    # Setup logging to both file and console
     logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
+        level=log_level,
         format=log_format,
         datefmt=date_format,
-        handlers=[]
+        handlers=[
+            logging.FileHandler(log_dir / f"wazuh_install_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"),
+            logging.StreamHandler(sys.stdout)
+        ]
     )
     
+    return logging.getLogger(__name__)
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
+def run_command(command: List[str], check: bool = True, shell: bool = False, 
+                input_data: str = None, timeout: int = 300) -> subprocess.CompletedProcess:
+    """Execute a system command with proper error handling and logging."""
     logger = logging.getLogger(__name__)
-    logger.handlers.clear()
     
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, log_level.upper()))
-    console_formatter = logging.Formatter(log_format, date_format)
-    console_handler.setFormatter(console_formatter)
-    logger.addHandler(console_handler)
-    
-    # File handler (if specified)
-    if log_file:
-        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-        file_handler.setLevel(logging.DEBUG)
-        file_formatter = logging.Formatter(log_format, date_format)
-        file_handler.setFormatter(file_formatter)
-        logger.addHandler(file_handler)
-    
-    return logger
+    try:
+        cmd_str = ' '.join(command) if isinstance(command, list) else command
+        logger.debug(f"Executing command: {cmd_str}")
+        
+        if shell and isinstance(command, list):
+            command = ' '.join(command)
+        
+        result = subprocess.run(
+            command,
+            check=check,
+            shell=shell,
+            capture_output=True,
+            text=True,
+            input=input_data,
+            timeout=timeout
+        )
+        
+        if result.stdout:
+            logger.debug(f"Command stdout: {result.stdout.strip()}")
+        if result.stderr:
+            logger.debug(f"Command stderr: {result.stderr.strip()}")
+            
+        return result
+        
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Command failed: {cmd_str}")
+        logger.error(f"Return code: {e.returncode}")
+        logger.error(f"Stdout: {e.stdout}")
+        logger.error(f"Stderr: {e.stderr}")
+        raise
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"Command timed out after {timeout} seconds: {cmd_str}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error executing command: {cmd_str}")
+        logger.error(f"Error: {str(e)}")
+        raise
 
-# =============================================================================
-# SYSTEM UTILITIES
-# =============================================================================
-
-class SystemInfo:
-    """System information and detection utilities."""
+def check_system_requirements() -> bool:
+    """Check if the system meets minimum requirements for Wazuh installation."""
+    logger = logging.getLogger(__name__)
     
-    @staticmethod
-    def get_os_info() -> Dict[str, str]:
-        """Get detailed OS information."""
-        try:
-            # Try to read from /etc/os-release
-            if os.path.exists('/etc/os-release'):
-                os_info = {}
-                with open('/etc/os-release', 'r') as f:
-                    for line in f:
-                        if '=' in line:
-                            key, value = line.strip().split('=', 1)
-                            os_info[key] = value.strip('"')
-                
-                return {
-                    'distribution': os_info.get('ID', 'unknown'),
-                    'version': os_info.get('VERSION_ID', 'unknown'),
-                    'codename': os_info.get('VERSION_CODENAME', 'unknown'),
-                    'description': os_info.get('PRETTY_NAME', 'unknown'),
-                    'architecture': platform.machine()
-                }
-        except Exception:
-            pass
+    try:
+        # Check available RAM
+        with open('/proc/meminfo', 'r') as f:
+            meminfo = f.read()
+        mem_total_kb = int(re.search(r'MemTotal:\s+(\d+)', meminfo).group(1))
+        mem_total_gb = mem_total_kb / (1024 * 1024)
         
-        # Fallback to platform module
-        return {
-            'distribution': platform.system().lower(),
-            'version': platform.release(),
-            'codename': 'unknown',
-            'description': platform.platform(),
-            'architecture': platform.machine()
-        }
-    
-    @staticmethod
-    def is_supported_os() -> Tuple[bool, str]:
-        """Check if the current OS is supported."""
-        os_info = SystemInfo.get_os_info()
-        distribution = os_info['distribution'].lower()
-        version = os_info['version']
+        if mem_total_gb < MIN_RAM_GB:
+            logger.warning(f"Low RAM detected: {mem_total_gb:.1f}GB (minimum: {MIN_RAM_GB}GB)")
         
-        supported_os = {
-            'ubuntu': ['18.04', '20.04', '22.04', '24.04'],
-            'debian': ['9', '10', '11', '12'],
-            'centos': ['7', '8'],
-            'rhel': ['7', '8', '9'],
-            'rocky': ['8', '9'],
-            'almalinux': ['8', '9']
-        }
+        # Check available disk space
+        disk_usage = shutil.disk_usage('/')
+        disk_free_gb = disk_usage.free / (1024**3)
         
-        if distribution in supported_os:
-            if version in supported_os[distribution] or any(version.startswith(v) for v in supported_os[distribution]):
-                return True, f"Supported OS: {distribution} {version}"
-            else:
-                return False, f"Unsupported version: {distribution} {version}"
-        else:
-            return False, f"Unsupported distribution: {distribution}"
-    
-    @staticmethod
-    def get_network_info() -> Dict[str, str]:
-        """Get network interface information."""
-        try:
-            # Get hostname
-            hostname = subprocess.check_output(['hostname'], universal_newlines=True).strip()
-            
-            # Get primary IP address
-            ip_result = subprocess.check_output([
-                'hostname', '-I'
-            ], universal_newlines=True).strip()
-            
-            primary_ip = ip_result.split()[0] if ip_result else '127.0.0.1'
-            
-            return {
-                'hostname': hostname,
-                'primary_ip': primary_ip,
-                'all_ips': ip_result.split()
-            }
-        except Exception as e:
-            return {
-                'hostname': 'localhost',
-                'primary_ip': '127.0.0.1',
-                'all_ips': ['127.0.0.1']
-            }
-
-class CommandExecutor:
-    """Utility class for executing system commands."""
-    
-    def __init__(self, logger: logging.Logger):
-        self.logger = logger
-    
-    def run_command(self, command: List[str], cwd: Optional[str] = None, 
-                   env: Optional[Dict[str, str]] = None, timeout: int = 300,
-                   check: bool = True) -> subprocess.CompletedProcess:
-        """
-        Execute a system command with proper logging and error handling.
-        
-        Args:
-            command: Command and arguments as list
-            cwd: Working directory
-            env: Environment variables
-            timeout: Command timeout in seconds
-            check: Whether to raise exception on non-zero exit code
-            
-        Returns:
-            CompletedProcess instance
-            
-        Raises:
-            subprocess.CalledProcessError: If command fails and check=True
-        """
-        self.logger.debug(f"Executing command: {' '.join(command)}")
-        
-        try:
-            result = subprocess.run(
-                command,
-                cwd=cwd,
-                env=env,
-                timeout=timeout,
-                check=check,
-                capture_output=True,
-                universal_newlines=True
-            )
-            
-            if result.stdout:
-                self.logger.debug(f"Command stdout: {result.stdout}")
-            if result.stderr:
-                self.logger.debug(f"Command stderr: {result.stderr}")
-                
-            return result
-            
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"Command failed: {' '.join(command)}")
-            self.logger.error(f"Return code: {e.returncode}")
-            self.logger.error(f"Stdout: {e.stdout}")
-            self.logger.error(f"Stderr: {e.stderr}")
-            raise
-        except subprocess.TimeoutExpired as e:
-            self.logger.error(f"Command timed out after {timeout}s: {' '.join(command)}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error executing command: {e}")
-            raise
-
-    def run_shell_command(self, command: str, cwd: Optional[str] = None,
-                         env: Optional[Dict[str, str]] = None, timeout: int = 300,
-                         check: bool = True) -> subprocess.CompletedProcess:
-        """
-        Execute a shell command string.
-        
-        Args:
-            command: Shell command string
-            cwd: Working directory
-            env: Environment variables
-            timeout: Command timeout in seconds
-            check: Whether to raise exception on non-zero exit code
-            
-        Returns:
-            CompletedProcess instance
-        """
-        self.logger.debug(f"Executing shell command: {command}")
-        
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                cwd=cwd,
-                env=env,
-                timeout=timeout,
-                check=check,
-                capture_output=True,
-                universal_newlines=True
-            )
-            
-            if result.stdout:
-                self.logger.debug(f"Command stdout: {result.stdout}")
-            if result.stderr:
-                self.logger.debug(f"Command stderr: {result.stderr}")
-                
-            return result
-            
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"Shell command failed: {command}")
-            self.logger.error(f"Return code: {e.returncode}")
-            self.logger.error(f"Stdout: {e.stdout}")
-            self.logger.error(f"Stderr: {e.stderr}")
-            raise
-        except subprocess.TimeoutExpired as e:
-            self.logger.error(f"Shell command timed out after {timeout}s: {command}")
-            raise
-        except Exception as e:
-            self.logger.error(f"Unexpected error executing shell command: {e}")
-            raise
-
-# =============================================================================
-# DEPENDENCY CHECKER
-# =============================================================================
-
-class DependencyChecker:
-    """Check and install required system dependencies."""
-    
-    def __init__(self, logger: logging.Logger, executor: CommandExecutor):
-        self.logger = logger
-        self.executor = executor
-        
-    def check_required_tools(self) -> List[str]:
-        """Check for required system tools."""
-        required_tools = [
-            'curl', 'wget', 'gpg', 'apt-get', 'systemctl', 
-            'openssl', 'tar', 'unzip', 'hostname'
-        ]
-        
-        missing_tools = []
-        for tool in required_tools:
-            if not which(tool):
-                missing_tools.append(tool)
-                
-        return missing_tools
-    
-    def install_missing_tools(self, missing_tools: List[str]) -> bool:
-        """Install missing system tools."""
-        if not missing_tools:
-            return True
-            
-        self.logger.info(f"Installing missing tools: {', '.join(missing_tools)}")
-        
-        try:
-            # Update package cache
-            self.executor.run_command(['apt-get', 'update'])
-            
-            # Install missing tools
-            install_cmd = ['apt-get', 'install', '-y'] + missing_tools
-            self.executor.run_command(install_cmd)
-            
-            self.logger.info("Successfully installed missing tools")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to install missing tools: {e}")
-            return False
-    
-    def check_system_requirements(self) -> bool:
-        """Check overall system requirements."""
-        # Check OS support
-        os_supported, os_message = SystemInfo.is_supported_os()
-        if not os_supported:
-            self.logger.error(os_message)
+        if disk_free_gb < MIN_DISK_GB:
+            logger.error(f"Insufficient disk space: {disk_free_gb:.1f}GB (minimum: {MIN_DISK_GB}GB)")
             return False
         
-        self.logger.info(os_message)
-        
-        # Check and install missing tools
-        missing_tools = self.check_required_tools()
-        if missing_tools:
-            if not self.install_missing_tools(missing_tools):
-                return False
-        
-        self.logger.info("All required dependencies are available")
+        logger.info(f"System requirements check passed - RAM: {mem_total_gb:.1f}GB, Disk: {disk_free_gb:.1f}GB")
         return True
+        
+    except Exception as e:
+        logger.error(f"Failed to check system requirements: {str(e)}")
+        return False
+
+def get_system_info() -> Dict[str, str]:
+    """Get system information including OS, distribution, and architecture."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Get basic system information
+        uname = platform.uname()
+        
+        # Get distribution information
+        try:
+            with open('/etc/os-release', 'r') as f:
+                os_release = f.read()
+            
+            distro_id = re.search(r'ID=(.+)', os_release).group(1).strip('"')
+            distro_version = re.search(r'VERSION_ID=(.+)', os_release).group(1).strip('"')
+            distro_name = re.search(r'PRETTY_NAME=(.+)', os_release).group(1).strip('"')
+        except:
+            distro_id = "unknown"
+            distro_version = "unknown"
+            distro_name = "unknown"
+        
+        system_info = {
+            'system': uname.system.lower(),
+            'node': uname.node,
+            'release': uname.release,
+            'version': uname.version,
+            'machine': uname.machine,
+            'processor': uname.processor,
+            'distro_id': distro_id,
+            'distro_version': distro_version,
+            'distro_name': distro_name
+        }
+        
+        logger.info(f"System: {distro_name} ({uname.machine})")
+        return system_info
+        
+    except Exception as e:
+        logger.error(f"Failed to get system information: {str(e)}")
+        return {}
+
+def check_dependencies() -> Tuple[bool, List[str]]:
+    """Check for required system dependencies."""
+    logger = logging.getLogger(__name__)
+    missing_packages = []
+    
+    for package in REQUIRED_PACKAGES:
+        if not which(package):
+            missing_packages.append(package)
+    
+    if missing_packages:
+        logger.warning(f"Missing dependencies: {', '.join(missing_packages)}")
+        return False, missing_packages
+    
+    logger.info("All required dependencies are available")
+    return True, []
+
+def install_missing_dependencies(missing_packages: List[str]) -> bool:
+    """Install missing system dependencies."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        if not missing_packages:
+            return True
+        
+        logger.info(f"Installing missing tools: {', '.join(missing_packages)}")
+        
+        # Update package cache
+        run_command(["apt", "update"])
+        
+        # Install missing packages
+        install_cmd = ["apt", "install", "-y"] + missing_packages
+        run_command(install_cmd)
+        
+        logger.info("Successfully installed missing tools")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to install missing dependencies: {str(e)}")
+        return False
+
+# =============================================================================
+# CERTIFICATE MANAGEMENT
+# =============================================================================
+
+def generate_ssl_certificates(node_name: str, node_ip: str) -> bool:
+    """Generate SSL certificates for Wazuh components with proper OpenSSL configuration."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        cert_dir = Path(f"{INDEXER_CONFIG_DIR}/certs")
+        cert_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.info("Setting up SSL certificates...")
+        
+        # 1. Generate Root CA private key
+        logger.debug("Generating Root CA private key...")
+        run_command([
+            "openssl", "genpkey", "-algorithm", "RSA", "-out", 
+            f"{cert_dir}/root-ca-key.pem", "-pkcs8", "-aes256", 
+            "-pass", "pass:wazuh123"
+        ])
+        
+        # 2. Generate Root CA certificate
+        logger.debug("Generating Root CA certificate...")
+        run_command([
+            "openssl", "req", "-new", "-x509", "-sha256", "-key", 
+            f"{cert_dir}/root-ca-key.pem", "-passin", "pass:wazuh123",
+            "-out", f"{cert_dir}/root-ca.pem", "-days", "3650",
+            "-subj", f"/C=US/ST=CA/L=San Francisco/O=Wazuh/OU=IT/CN=root-ca"
+        ])
+        
+        # 3. Generate Admin private key
+        logger.debug("Generating Admin private key...")
+        run_command([
+            "openssl", "genpkey", "-algorithm", "RSA", "-out", 
+            f"{cert_dir}/admin-key.pem"
+        ])
+        
+        # 4. Generate Admin certificate signing request
+        logger.debug("Generating Admin CSR...")
+        run_command([
+            "openssl", "req", "-new", "-key", f"{cert_dir}/admin-key.pem",
+            "-out", f"{cert_dir}/admin.csr",
+            "-subj", f"/C=US/ST=CA/L=San Francisco/O=Wazuh/OU=IT/CN=admin"
+        ])
+        
+        # 5. Generate Node private key
+        logger.debug("Generating Node private key...")
+        run_command([
+            "openssl", "genpkey", "-algorithm", "RSA", "-out", 
+            f"{cert_dir}/node-key.pem"
+        ])
+        
+        # 6. Generate Node certificate signing request
+        logger.debug("Generating Node CSR...")
+        run_command([
+            "openssl", "req", "-new", "-key", f"{cert_dir}/node-key.pem",
+            "-out", f"{cert_dir}/node.csr",
+            "-subj", f"/C=US/ST=CA/L=San Francisco/O=Wazuh/OU=IT/CN={node_name}"
+        ])
+        
+        # 7. Create extension file for node certificate with proper format
+        logger.debug("Creating certificate extension file...")
+        node_ext_content = f"""basicConstraints=CA:FALSE
+keyUsage=nonRepudiation,digitalSignature,keyEncipherment
+subjectAltName=@alt_names
+
+[alt_names]
+DNS.1=localhost
+DNS.2={node_name}
+DNS.3=wazuh-indexer
+IP.1=127.0.0.1
+IP.2={node_ip}"""
+        
+        with open(f"{cert_dir}/node.ext", "w") as f:
+            f.write(node_ext_content)
+        
+        # 8. Generate Node certificate (Fixed OpenSSL command)
+        logger.debug("Generating Node certificate...")
+        run_command([
+            "openssl", "x509", "-req", "-in", f"{cert_dir}/node.csr",
+            "-CA", f"{cert_dir}/root-ca.pem", 
+            "-CAkey", f"{cert_dir}/root-ca-key.pem", 
+            "-passin", "pass:wazuh123",
+            "-CAcreateserial", "-out", f"{cert_dir}/node.pem", 
+            "-days", "365", "-extfile", f"{cert_dir}/node.ext"
+        ])
+        
+        # 9. Create extension file for admin certificate
+        logger.debug("Creating admin extension file...")
+        admin_ext_content = """basicConstraints=CA:FALSE
+keyUsage=nonRepudiation,digitalSignature,keyEncipherment
+extendedKeyUsage=clientAuth"""
+        
+        with open(f"{cert_dir}/admin.ext", "w") as f:
+            f.write(admin_ext_content)
+        
+        # 10. Generate Admin certificate
+        logger.debug("Generating Admin certificate...")
+        run_command([
+            "openssl", "x509", "-req", "-in", f"{cert_dir}/admin.csr",
+            "-CA", f"{cert_dir}/root-ca.pem", 
+            "-CAkey", f"{cert_dir}/root-ca-key.pem", 
+            "-passin", "pass:wazuh123",
+            "-CAcreateserial", "-out", f"{cert_dir}/admin.pem", 
+            "-days", "365", "-extfile", f"{cert_dir}/admin.ext"
+        ])
+        
+        # 11. Set proper permissions
+        logger.debug("Setting certificate permissions...")
+        run_command(["chown", "-R", "wazuh-indexer:wazuh-indexer", str(cert_dir)])
+        run_command(["chmod", "600", f"{cert_dir}/*-key.pem"])
+        run_command(["chmod", "644", f"{cert_dir}/*.pem"])
+        run_command(["chmod", "644", f"{cert_dir}/*.csr"])
+        
+        # 12. Verify certificates
+        logger.debug("Verifying generated certificates...")
+        run_command(["openssl", "x509", "-in", f"{cert_dir}/root-ca.pem", "-text", "-noout"])
+        run_command(["openssl", "x509", "-in", f"{cert_dir}/node.pem", "-text", "-noout"])
+        run_command(["openssl", "x509", "-in", f"{cert_dir}/admin.pem", "-text", "-noout"])
+        
+        logger.info("SSL certificates generated successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to generate SSL certificates: {str(e)}")
+        return False
 
 # =============================================================================
 # REPOSITORY MANAGEMENT
 # =============================================================================
 
-class RepositoryManager:
-    """Manage Wazuh package repositories."""
+def add_wazuh_repository() -> bool:
+    """Add Wazuh repository to the system."""
+    logger = logging.getLogger(__name__)
     
-    def __init__(self, logger: logging.Logger, executor: CommandExecutor):
-        self.logger = logger
-        self.executor = executor
+    try:
+        logger.info("Adding Wazuh repository...")
         
-    def add_wazuh_repository(self) -> bool:
-        """Add Wazuh repository to the system."""
-        try:
-            self.logger.info("Adding Wazuh repository...")
-            
-            # Create keyrings directory if it doesn't exist
-            keyrings_dir = "/usr/share/keyrings"
-            if not os.path.exists(keyrings_dir):
-                os.makedirs(keyrings_dir, mode=0o755, exist_ok=True)
-            
-            # Download GPG key to temporary file
-            temp_key_file = "/tmp/wazuh-gpg-key"
-            self.logger.debug("Downloading Wazuh GPG key...")
-            
-            try:
-                self.executor.run_command([
-                    'curl', '-s', '-o', temp_key_file, WAZUH_GPG_KEY_URL
-                ])
-            except Exception as e:
-                self.logger.error(f"Failed to download GPG key: {e}")
-                return False
-            
-            # Import GPG key
-            self.logger.debug("Importing Wazuh GPG key...")
-            try:
-                # Create GPG keyring
-                keyring_path = "/usr/share/keyrings/wazuh.gpg"
-                
-                # Import the key using gpg
-                self.executor.run_shell_command(
-                    f"gpg --no-default-keyring --keyring {keyring_path} --import {temp_key_file}"
-                )
-                
-                # Set proper permissions
-                os.chmod(keyring_path, 0o644)
-                
-            except Exception as e:
-                self.logger.error(f"Failed to import GPG key: {e}")
-                return False
-            finally:
-                # Clean up temporary file
-                if os.path.exists(temp_key_file):
-                    os.remove(temp_key_file)
-            
-            # Get OS information for repository URL
-            os_info = SystemInfo.get_os_info()
-            distribution = os_info['distribution']
-            codename = os_info['codename']
-            
-            # Add repository
-            repo_line = f"deb [signed-by=/usr/share/keyrings/wazuh.gpg] {WAZUH_REPO_URL}/{WAZUH_MAJOR_VERSION}/apt/ stable main"
-            sources_file = "/etc/apt/sources.list.d/wazuh.list"
-            
-            self.logger.debug(f"Adding repository: {repo_line}")
-            with open(sources_file, 'w') as f:
-                f.write(repo_line + '\n')
-            
-            # Update package cache
-            self.logger.info("Updating package cache...")
-            self.executor.run_command(['apt-get', 'update'])
-            
-            self.logger.info("Successfully added Wazuh repository")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to add Wazuh repository: {e}")
-            return False
-
-# =============================================================================
-# SSL CERTIFICATE MANAGEMENT
-# =============================================================================
-
-class CertificateManager:
-    """Manage SSL certificates for Wazuh components."""
-    
-    def __init__(self, logger: logging.Logger, executor: CommandExecutor):
-        self.logger = logger
-        self.executor = executor
+        # Create keyrings directory if it doesn't exist
+        keyrings_dir = Path("/usr/share/keyrings")
+        keyrings_dir.mkdir(parents=True, exist_ok=True)
         
-    def setup_certificates(self, node_name: str, node_ip: str) -> bool:
-        """Setup SSL certificates for Wazuh indexer."""
-        try:
-            self.logger.info("Setting up SSL certificates...")
-            
-            # Create certificates directory
-            cert_dir = Path(DEFAULT_CERT_DIR)
-            cert_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Generate root CA
-            if not self._generate_root_ca(cert_dir):
-                return False
-                
-            # Generate node certificates
-            if not self._generate_node_certificate(cert_dir, node_name, node_ip):
-                return False
-                
-            # Generate admin certificates
-            if not self._generate_admin_certificate(cert_dir):
-                return False
-                
-            # Set proper permissions
-            self._set_certificate_permissions(cert_dir)
-            
-            self.logger.info("Successfully setup SSL certificates")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to setup certificates: {e}")
-            return False
-    
-    def _generate_root_ca(self, cert_dir: Path) -> bool:
-        """Generate root CA certificate."""
-        try:
-            self.logger.debug("Generating root CA certificate...")
-            
-            # Generate private key
-            self.executor.run_command([
-                'openssl', 'genrsa', '-out', 
-                str(cert_dir / 'root-ca-key.pem'), '2048'
-            ])
-            
-            # Generate root certificate
-            self.executor.run_command([
-                'openssl', 'req', '-new', '-x509', '-sha256', '-days', '365',
-                '-key', str(cert_dir / 'root-ca-key.pem'),
-                '-out', str(cert_dir / 'root-ca.pem'),
-                '-subj', '/C=US/ST=CA/L=San Francisco/O=Wazuh/OU=IT/CN=root-ca'
-            ])
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to generate root CA: {e}")
-            return False
-    
-    def _generate_node_certificate(self, cert_dir: Path, node_name: str, node_ip: str) -> bool:
-        """Generate node certificate."""
-        try:
-            self.logger.debug(f"Generating node certificate for {node_name}...")
-            
-            # Create OpenSSL config for node certificate
-            node_ext_content = f"""basicConstraints=CA:FALSE
-keyUsage = nonRepudiation, digitalSignature, keyEncipherment
-subjectAltName = @alt_names
-
-[alt_names]
-DNS.1 = localhost
-DNS.2 = {node_name}
-DNS.3 = wazuh-indexer
-IP.1 = 127.0.0.1
-IP.2 = {node_ip}"""
-            
-            ext_file = cert_dir / 'node.ext'
-            with open(ext_file, 'w') as f:
-                f.write(node_ext_content)
-            
-            # Generate private key
-            self.executor.run_command([
-                'openssl', 'genrsa', '-out', 
-                str(cert_dir / 'node-key.pem'), '2048'
-            ])
-            
-            # Generate certificate signing request
-            self.executor.run_command([
-                'openssl', 'req', '-new', '-sha256',
-                '-key', str(cert_dir / 'node-key.pem'),
-                '-out', str(cert_dir / 'node.csr'),
-                '-subj', f'/C=US/ST=CA/L=San Francisco/O=Wazuh/OU=IT/CN={node_name}'
-            ])
-            
-            # Generate certificate
-            self.executor.run_command([
-                'openssl', 'x509', '-req', '-in', str(cert_dir / 'node.csr'),
-                '-CA', str(cert_dir / 'root-ca.pem'),
-                '-CAkey', str(cert_dir / 'root-ca-key.pem'),
-                '-CAcreateserial', '-out', str(cert_dir / 'node.pem'),
-                '-days', '365', '-extensions', 'v3_req', '-extfile', str(ext_file)
-            ])
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to generate node certificate: {e}")
-            return False
-    
-    def _generate_admin_certificate(self, cert_dir: Path) -> bool:
-        """Generate admin certificate."""
-        try:
-            self.logger.debug("Generating admin certificate...")
-            
-            # Generate private key
-            self.executor.run_command([
-                'openssl', 'genrsa', '-out', 
-                str(cert_dir / 'admin-key.pem'), '2048'
-            ])
-            
-            # Generate certificate signing request
-            self.executor.run_command([
-                'openssl', 'req', '-new', '-sha256',
-                '-key', str(cert_dir / 'admin-key.pem'),
-                '-out', str(cert_dir / 'admin.csr'),
-                '-subj', '/C=US/ST=CA/L=San Francisco/O=Wazuh/OU=IT/CN=admin'
-            ])
-            
-            # Generate certificate
-            self.executor.run_command([
-                'openssl', 'x509', '-req', '-in', str(cert_dir / 'admin.csr'),
-                '-CA', str(cert_dir / 'root-ca.pem'),
-                '-CAkey', str(cert_dir / 'root-ca-key.pem'),
-                '-CAcreateserial', '-out', str(cert_dir / 'admin.pem'),
-                '-days', '365'
-            ])
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to generate admin certificate: {e}")
-            return False
-    
-    def _set_certificate_permissions(self, cert_dir: Path) -> None:
-        """Set proper permissions for certificate files."""
-        try:
-            # Set directory permissions
-            os.chmod(cert_dir, 0o755)
-            
-            # Set certificate file permissions
-            for cert_file in cert_dir.glob('*.pem'):
-                if 'key' in cert_file.name:
-                    os.chmod(cert_file, 0o600)  # Private keys
-                else:
-                    os.chmod(cert_file, 0o644)  # Certificates
-                    
-            # Change ownership to wazuh-indexer user if exists
-            try:
-                import pwd
-                wazuh_user = pwd.getpwnam('wazuh-indexer')
-                for cert_file in cert_dir.glob('*'):
-                    os.chown(cert_file, wazuh_user.pw_uid, wazuh_user.pw_gid)
-            except (KeyError, ImportError):
-                # User doesn't exist yet or pwd module not available
-                pass
-                
-        except Exception as e:
-            self.logger.warning(f"Failed to set certificate permissions: {e}")
-
-# =============================================================================
-# WAZUH COMPONENT INSTALLERS
-# =============================================================================
-
-class WazuhManagerInstaller:
-    """Install and configure Wazuh Manager."""
-    
-    def __init__(self, logger: logging.Logger, executor: CommandExecutor):
-        self.logger = logger
-        self.executor = executor
+        # Download and import Wazuh GPG key using proper method for Ubuntu 24.04
+        logger.debug("Downloading Wazuh GPG key...")
+        gpg_key_url = f"{WAZUH_REPO_BASE_URL}/key/GPG-KEY-WAZUH"
         
-    def install(self) -> bool:
-        """Install Wazuh Manager."""
-        try:
-            self.logger.info("Installing Wazuh Manager...")
-            
-            # Install package
-            self.executor.run_command([
-                'apt-get', 'install', '-y', f'wazuh-manager={WAZUH_VERSION}-1'
-            ])
-            
-            # Enable and start service
-            self.executor.run_command(['systemctl', 'daemon-reload'])
-            self.executor.run_command(['systemctl', 'enable', WAZUH_MANAGER_SERVICE])
-            self.executor.run_command(['systemctl', 'start', WAZUH_MANAGER_SERVICE])
-            
-            # Verify installation
-            if self._verify_installation():
-                self.logger.info("Wazuh Manager installed successfully")
-                return True
-            else:
-                self.logger.error("Wazuh Manager installation verification failed")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Failed to install Wazuh Manager: {e}")
-            return False
-    
-    def _verify_installation(self) -> bool:
-        """Verify Wazuh Manager installation."""
-        try:
-            # Check if service is running
-            result = self.executor.run_command([
-                'systemctl', 'is-active', WAZUH_MANAGER_SERVICE
-            ], check=False)
-            
-            return result.returncode == 0
-            
-        except Exception:
-            return False
+        # Method 1: Download key and convert to GPG format
+        key_response = run_command(["curl", "-s", gpg_key_url])
+        if key_response.returncode == 0:
+            # Import key using gpg and save to keyring
+            gpg_process = run_command([
+                "gpg", "--dearmor", "--output", "/usr/share/keyrings/wazuh.gpg"
+            ], input_data=key_response.stdout)
+        else:
+            # Fallback method using wget
+            logger.debug("Fallback: Using wget to download GPG key...")
+            run_command([
+                "wget", "-qO", "-", gpg_key_url, "|", 
+                "gpg", "--dearmor", "--output", "/usr/share/keyrings/wazuh.gpg"
+            ], shell=True)
+        
+        # Add Wazuh repository
+        logger.debug("Adding Wazuh repository to sources...")
+        repo_line = f"deb [signed-by=/usr/share/keyrings/wazuh.gpg] {WAZUH_REPO_BASE_URL}/{WAZUH_MAJOR_VERSION}/apt/ stable main"
+        
+        with open("/etc/apt/sources.list.d/wazuh.list", "w") as f:
+            f.write(repo_line + "\n")
+        
+        # Update package cache
+        logger.info("Updating package cache...")
+        run_command(["apt", "update"])
+        
+        logger.info("Successfully added Wazuh repository")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to add Wazuh repository: {str(e)}")
+        return False
 
-class WazuhIndexerInstaller:
+# =============================================================================
+# WAZUH INDEXER INSTALLATION
+# =============================================================================
+
+def install_wazuh_indexer(node_name: str, node_ip: str) -> bool:
     """Install and configure Wazuh Indexer."""
+    logger = logging.getLogger(__name__)
     
-    def __init__(self, logger: logging.Logger, executor: CommandExecutor, cert_manager: CertificateManager):
-        self.logger = logger
-        self.executor = executor
-        self.cert_manager = cert_manager
+    try:
+        logger.info("Installing Wazuh Indexer...")
         
-    def install(self, node_name: str, node_ip: str) -> bool:
-        """Install Wazuh Indexer."""
-        try:
-            self.logger.info("Installing Wazuh Indexer...")
-            
-            # Setup certificates first
-            if not self.cert_manager.setup_certificates(node_name, node_ip):
-                return False
-            
-            # Install package
-            self.executor.run_command([
-                'apt-get', 'install', '-y', f'wazuh-indexer={WAZUH_VERSION}-1'
-            ])
-            
-            # Configure indexer
-            if not self._configure_indexer(node_name, node_ip):
-                return False
-            
-            # Enable and start service
-            self.executor.run_command(['systemctl', 'daemon-reload'])
-            self.executor.run_command(['systemctl', 'enable', WAZUH_INDEXER_SERVICE])
-            self.executor.run_command(['systemctl', 'start', WAZUH_INDEXER_SERVICE])
-            
-            # Wait for service to start
-            time.sleep(10)
-            
-            # Initialize security
-            if not self._initialize_security():
-                return False
-            
-            # Verify installation
-            if self._verify_installation():
-                self.logger.info("Wazuh Indexer installed successfully")
-                return True
-            else:
-                self.logger.error("Wazuh Indexer installation verification failed")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Failed to install Wazuh Indexer: {e}")
+        # Install Wazuh Indexer package
+        run_command(["apt", "install", "-y", "wazuh-indexer"])
+        
+        # Generate SSL certificates
+        if not generate_ssl_certificates(node_name, node_ip):
             return False
-    
-    def _configure_indexer(self, node_name: str, node_ip: str) -> bool:
-        """Configure Wazuh Indexer."""
-        try:
-            config_file = "/etc/wazuh-indexer/opensearch.yml"
-            
-            config_content = f"""network.host: {node_ip}
+        
+        # Configure Wazuh Indexer
+        logger.info("Configuring Wazuh Indexer...")
+        
+        indexer_config = f"""
+# Wazuh Indexer Configuration
+network.host: {node_ip}
 node.name: {node_name}
-cluster.initial_master_nodes: {node_name}
-cluster.name: wazuh-cluster
+cluster.initial_master_nodes: ["{node_name}"]
+cluster.name: "wazuh-cluster"
 
-# SSL/TLS configuration
-plugins.security.ssl.transport.pemcert_filepath: {DEFAULT_CERT_DIR}/node.pem
-plugins.security.ssl.transport.pemkey_filepath: {DEFAULT_CERT_DIR}/node-key.pem
-plugins.security.ssl.transport.pemtrustedcas_filepath: {DEFAULT_CERT_DIR}/root-ca.pem
+# Security Configuration
+plugins.security.disabled: false
+plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
+plugins.security.ssl.transport.pemkey_filepath: certs/node-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
 plugins.security.ssl.transport.enforce_hostname_verification: false
 plugins.security.ssl.http.enabled: true
-plugins.security.ssl.http.pemcert_filepath: {DEFAULT_CERT_DIR}/node.pem
-plugins.security.ssl.http.pemkey_filepath: {DEFAULT_CERT_DIR}/node-key.pem
-plugins.security.ssl.http.pemtrustedcas_filepath: {DEFAULT_CERT_DIR}/root-ca.pem
+plugins.security.ssl.http.pemcert_filepath: certs/node.pem
+plugins.security.ssl.http.pemkey_filepath: certs/node-key.pem
+plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
 plugins.security.allow_unsafe_democertificates: false
 plugins.security.allow_default_init_securityindex: true
 plugins.security.authcz.admin_dn:
-  - 'CN=admin,OU=IT,O=Wazuh,L=San Francisco,ST=CA,C=US'
+  - "CN=admin,OU=IT,O=Wazuh,L=San Francisco,ST=CA,C=US"
 plugins.security.nodes_dn:
-  - 'CN={node_name},OU=IT,O=Wazuh,L=San Francisco,ST=CA,C=US'
+  - "CN={node_name},OU=IT,O=Wazuh,L=San Francisco,ST=CA,C=US"
 plugins.security.audit.type: internal_opensearch
 plugins.security.enable_snapshot_restore_privilege: true
 plugins.security.check_snapshot_restore_write_privileges: true
 plugins.security.restapi.roles_enabled: ["all_access", "security_rest_api_access"]
-cluster.routing.allocation.disk.threshold_enabled: false
-"""
-            
-            with open(config_file, 'w') as f:
-                f.write(config_content)
-                
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to configure Wazuh Indexer: {e}")
-            return False
-    
-    def _initialize_security(self) -> bool:
-        """Initialize Wazuh Indexer security."""
-        try:
-            self.logger.info("Initializing Wazuh Indexer security...")
-            
-            # Run security initialization script
-            self.executor.run_command([
-                '/usr/share/wazuh-indexer/bin/indexer-security-init.sh'
-            ])
-            
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize security: {e}")
-            return False
-    
-    def _verify_installation(self) -> bool:
-        """Verify Wazuh Indexer installation."""
-        try:
-            # Check if service is running
-            result = self.executor.run_command([
-                'systemctl', 'is-active', WAZUH_INDEXER_SERVICE
-            ], check=False)
-            
-            return result.returncode == 0
-            
-        except Exception:
-            return False
 
-class WazuhDashboardInstaller:
-    """Install and configure Wazuh Dashboard."""
-    
-    def __init__(self, logger: logging.Logger, executor: CommandExecutor):
-        self.logger = logger
-        self.executor = executor
-        
-    def install(self, indexer_ip: str) -> bool:
-        """Install Wazuh Dashboard."""
-        try:
-            self.logger.info("Installing Wazuh Dashboard...")
-            
-            # Install package
-            self.executor.run_command([
-                'apt-get', 'install', '-y', f'wazuh-dashboard={WAZUH_VERSION}-1'
-            ])
-            
-            # Configure dashboard
-            if not self._configure_dashboard(indexer_ip):
-                return False
-            
-            # Enable and start service
-            self.executor.run_command(['systemctl', 'daemon-reload'])
-            self.executor.run_command(['systemctl', 'enable', WAZUH_DASHBOARD_SERVICE])
-            self.executor.run_command(['systemctl', 'start', WAZUH_DASHBOARD_SERVICE])
-            
-            # Verify installation
-            if self._verify_installation():
-                self.logger.info("Wazuh Dashboard installed successfully")
-                return True
-            else:
-                self.logger.error("Wazuh Dashboard installation verification failed")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Failed to install Wazuh Dashboard: {e}")
-            return False
-    
-    def _configure_dashboard(self, indexer_ip: str) -> bool:
-        """Configure Wazuh Dashboard."""
-        try:
-            config_file = "/etc/wazuh-dashboard/opensearch_dashboards.yml"
-            
-            config_content = f"""server.host: 0.0.0.0
-server.port: 443
-opensearch.hosts: https://{indexer_ip}:9200
-opensearch.ssl.verificationMode: certificate
-opensearch.ssl.certificateAuthorities: ["{DEFAULT_CERT_DIR}/root-ca.pem"]
-opensearch.ssl.certificate: "{DEFAULT_CERT_DIR}/node.pem"
-opensearch.ssl.key: "{DEFAULT_CERT_DIR}/node-key.pem"
-opensearch.username: admin
-opensearch.password: admin
-opensearch.requestHeadersWhitelist: ["authorization", "securitytenant"]
-server.ssl.enabled: true
-server.ssl.certificate: "{DEFAULT_CERT_DIR}/node.pem"
-server.ssl.key: "{DEFAULT_CERT_DIR}/node-key.pem"
-opensearch_security.multitenancy.enabled: true
-opensearch_security.multitenancy.tenants.preferred: ["Private", "Global"]
-opensearch_security.readonly_mode.roles: ["kibana_read_only"]
-uiSettings.overrides.defaultRoute: /app/wz-home
+# Performance Configuration
+bootstrap.memory_lock: true
 """
+        
+        # Write configuration file
+        config_file = f"{INDEXER_CONFIG_DIR}/opensearch.yml"
+        with open(config_file, "w") as f:
+            f.write(indexer_config)
+        
+        # Set ownership and permissions
+        run_command(["chown", "-R", "wazuh-indexer:wazuh-indexer", INDEXER_CONFIG_DIR])
+        run_command(["chmod", "660", config_file])
+        
+        # Configure systemd service
+        logger.info("Enabling and starting Wazuh Indexer service...")
+        run_command(["systemctl", "daemon-reload"])
+        run_command(["systemctl", "enable", "wazuh-indexer"])
+        
+        # Start the service
+        start_result = run_command(["systemctl", "start", "wazuh-indexer"], check=False)
+        if start_result.returncode != 0:
+            logger.warning("Wazuh Indexer failed to start on first attempt, checking logs...")
             
-            with open(config_file, 'w') as f:
-                f.write(config_content)
+            # Check logs for issues
+            log_result = run_command(["journalctl", "-u", "wazuh-indexer", "--no-pager", "-n", "50"], check=False)
+            if log_result.stdout:
+                logger.debug(f"Wazuh Indexer logs: {log_result.stdout}")
+            
+            # Try to start again
+            time.sleep(5)
+            run_command(["systemctl", "start", "wazuh-indexer"])
+        
+        # Wait for service to be ready
+        logger.info("Waiting for Wazuh Indexer to be ready...")
+        max_attempts = 30
+        for attempt in range(max_attempts):
+            try:
+                health_check = run_command([
+                    "curl", "-k", "-u", "admin:admin", 
+                    f"https://{node_ip}:9200/_cluster/health"
+                ], check=False, timeout=10)
                 
-            return True
+                if health_check.returncode == 0:
+                    logger.info("Wazuh Indexer is ready")
+                    break
+            except:
+                pass
             
-        except Exception as e:
-            self.logger.error(f"Failed to configure Wazuh Dashboard: {e}")
-            return False
-    
-    def _verify_installation(self) -> bool:
-        """Verify Wazuh Dashboard installation."""
-        try:
-            # Check if service is running
-            result = self.executor.run_command([
-                'systemctl', 'is-active', WAZUH_DASHBOARD_SERVICE
-            ], check=False)
-            
-            return result.returncode == 0
-            
-        except Exception:
-            return False
+            if attempt < max_attempts - 1:
+                time.sleep(10)
+            else:
+                logger.warning("Wazuh Indexer may not be fully ready, continuing...")
+        
+        logger.info("Wazuh Indexer installation completed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to install Wazuh Indexer: {str(e)}")
+        return False
 
 # =============================================================================
-# MAIN INSTALLER CLASS
+# WAZUH SERVER INSTALLATION
+# =============================================================================
+
+def install_wazuh_manager() -> bool:
+    """Install and configure Wazuh Manager."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info("Installing Wazuh Manager...")
+        
+        # Install Wazuh Manager package
+        run_command(["apt", "install", "-y", "wazuh-manager"])
+        
+        # Configure Wazuh Manager
+        logger.info("Configuring Wazuh Manager...")
+        
+        # Enable and start the service
+        run_command(["systemctl", "daemon-reload"])
+        run_command(["systemctl", "enable", "wazuh-manager"])
+        run_command(["systemctl", "start", "wazuh-manager"])
+        
+        # Wait for service to be ready
+        time.sleep(10)
+        
+        # Check service status
+        status_result = run_command(["systemctl", "is-active", "wazuh-manager"], check=False)
+        if status_result.stdout.strip() == "active":
+            logger.info("Wazuh Manager is running")
+        else:
+            logger.warning("Wazuh Manager may not be running properly")
+        
+        logger.info("Wazuh Manager installation completed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to install Wazuh Manager: {str(e)}")
+        return False
+
+# =============================================================================
+# WAZUH DASHBOARD INSTALLATION
+# =============================================================================
+
+def install_wazuh_dashboard(node_ip: str) -> bool:
+    """Install and configure Wazuh Dashboard."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info("Installing Wazuh Dashboard...")
+        
+        # Install Wazuh Dashboard package
+        run_command(["apt", "install", "-y", "wazuh-dashboard"])
+        
+        # Configure Wazuh Dashboard
+        logger.info("Configuring Wazuh Dashboard...")
+        
+        dashboard_config = f"""
+# Wazuh Dashboard Configuration
+server.host: {node_ip}
+server.port: 443
+opensearch.hosts: ["https://{node_ip}:9200"]
+opensearch.ssl.verificationMode: certificate
+opensearch.ssl.certificateAuthorities: ["{INDEXER_CONFIG_DIR}/certs/root-ca.pem"]
+opensearch.ssl.certificate: "{INDEXER_CONFIG_DIR}/certs/node.pem"
+opensearch.ssl.key: "{INDEXER_CONFIG_DIR}/certs/node-key.pem"
+opensearch.username: "kibanaserver"
+opensearch.password: "kibanaserver"
+opensearch.requestHeadersWhitelist: ["authorization", "securitytenant"]
+server.ssl.enabled: true
+server.ssl.certificate: "{INDEXER_CONFIG_DIR}/certs/node.pem"
+server.ssl.key: "{INDEXER_CONFIG_DIR}/certs/node-key.pem"
+server.ssl.certificateAuthorities: ["{INDEXER_CONFIG_DIR}/certs/root-ca.pem"]
+uiSettings.overrides.defaultRoute: "/app/wz-home"
+"""
+        
+        # Write configuration file
+        config_file = f"{DASHBOARD_CONFIG_DIR}/opensearch_dashboards.yml"
+        with open(config_file, "w") as f:
+            f.write(dashboard_config)
+        
+        # Set ownership and permissions
+        run_command(["chown", "-R", "wazuh-dashboard:wazuh-dashboard", DASHBOARD_CONFIG_DIR])
+        run_command(["chmod", "660", config_file])
+        
+        # Enable and start the service
+        run_command(["systemctl", "daemon-reload"])
+        run_command(["systemctl", "enable", "wazuh-dashboard"])
+        run_command(["systemctl", "start", "wazuh-dashboard"])
+        
+        # Wait for service to be ready
+        logger.info("Waiting for Wazuh Dashboard to be ready...")
+        time.sleep(20)
+        
+        # Check service status
+        status_result = run_command(["systemctl", "is-active", "wazuh-dashboard"], check=False)
+        if status_result.stdout.strip() == "active":
+            logger.info("Wazuh Dashboard is running")
+        else:
+            logger.warning("Wazuh Dashboard may not be running properly")
+        
+        logger.info("Wazuh Dashboard installation completed")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to install Wazuh Dashboard: {str(e)}")
+        return False
+
+# =============================================================================
+# POST-INSTALLATION CONFIGURATION
+# =============================================================================
+
+def configure_wazuh_security(node_ip: str) -> bool:
+    """Configure Wazuh security settings and initialize the security index."""
+    logger = logging.getLogger(__name__)
+    
+    try:
+        logger.info("Configuring Wazuh security...")
+        
+        # Wait for indexer to be fully ready
+        time.sleep(30)
+        
+        # Initialize security index
+        logger.info("Initializing security index...")
+        security_script = f"{INDEXER_CONFIG_DIR}/plugins/opensearch-security/tools/securityadmin.sh"
+        
+        if os.path.exists(security_script):
+            run_command([
+                "bash", security_script,
+                "-cd", f"{INDEXER_CONFIG_DIR}/plugins/opensearch-security/securityconfig/",
+                "-icl", "-nhnv",
+                "-cacert", f"{INDEXER_CONFIG_DIR}/certs/root-ca.pem",
+                "-cert", f"{INDEXER_CONFIG_DIR}/certs/admin.pem",
+                "-key", f"{INDEXER_CONFIG_DIR}/certs/admin-key.pem",
+                "-h", node_ip
+            ], timeout=120)
+        
+        logger.info("Security configuration completed")
+        return True
+        
+    except Exception as e:
+        logger.warning(f"Security configuration may have issues: {str(e)}")
+        return True  # Continue even if security config has issues
+
+def print_installation_summary(node_ip: str, components: List[str]) -> None:
+    """Print installation summary and access information."""
+    logger = logging.getLogger(__name__)
+    
+    logger.info("=" * 80)
+    logger.info("WAZUH INSTALLATION COMPLETED SUCCESSFULLY")
+    logger.info("=" * 80)
+    
+    if "indexer" in components:
+        logger.info(f"Wazuh Indexer: https://{node_ip}:9200")
+        logger.info("  - Default credentials: admin / admin")
+    
+    if "manager" in components:
+        logger.info(f"Wazuh Manager API: https://{node_ip}:55000")
+        logger.info("  - Default credentials: wazuh-wui / wazuh-wui")
+    
+    if "dashboard" in components:
+        logger.info(f"Wazuh Dashboard: https://{node_ip}")
+        logger.info("  - Default credentials: admin / admin")
+    
+    logger.info("")
+    logger.info("IMPORTANT SECURITY NOTES:")
+    logger.info("- Change default passwords immediately")
+    logger.info("- Review and configure firewall rules")
+    logger.info("- Update SSL certificates for production use")
+    logger.info("- Review and customize security policies")
+    logger.info("")
+    logger.info("Log files location: /var/ossec/logs/")
+    logger.info("Configuration files: /var/ossec/etc/")
+    logger.info("=" * 80)
+
+# =============================================================================
+# MAIN INSTALLATION ORCHESTRATOR
 # =============================================================================
 
 class WazuhInstaller:
-    """Main Wazuh installation orchestrator."""
+    """Main Wazuh installation orchestrator class."""
     
-    def __init__(self, args: argparse.Namespace):
-        self.args = args
+    def __init__(self, verbose: bool = False):
+        self.logger = setup_logging(verbose)
+        self.system_info = get_system_info()
+        self.node_name = self.system_info.get('node', 'wazuh-node')
+        self.node_ip = None
         
-        # Setup logging
-        log_file = os.path.join(DEFAULT_LOG_DIR, f"wazuh-install-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log")
-        self.logger = setup_logging(args.log_level, log_file)
+    def get_node_ip(self) -> str:
+        """Get the node IP address."""
+        if self.node_ip:
+            return self.node_ip
         
-        # Initialize utilities
-        self.executor = CommandExecutor(self.logger)
-        self.dependency_checker = DependencyChecker(self.logger, self.executor)
-        self.repo_manager = RepositoryManager(self.logger, self.executor)
-        self.cert_manager = CertificateManager(self.logger, self.executor)
-        
-        # Initialize component installers
-        self.manager_installer = WazuhManagerInstaller(self.logger, self.executor)
-        self.indexer_installer = WazuhIndexerInstaller(self.logger, self.executor, self.cert_manager)
-        self.dashboard_installer = WazuhDashboardInstaller(self.logger, self.executor)
-        
-        # Get system information
-        self.network_info = SystemInfo.get_network_info()
-        self.node_name = args.node_name or self.network_info['hostname']
-        self.node_ip = args.node_ip or self.network_info['primary_ip']
-    
-    def run(self) -> bool:
-        """Run the installation process."""
         try:
-            self.logger.info(f"Starting Wazuh Server Installation Script v{VERSION}")
-            self.logger.info(f"Author: {AUTHOR}")
+            # Try to get IP from hostname resolution
+            import socket
+            self.node_ip = socket.gethostbyname(socket.gethostname())
             
-            # Display system information
-            os_info = SystemInfo.get_os_info()
-            self.logger.info(f"System: {os_info['distribution']} {os_info['version']} ({os_info['architecture']})")
+            # If we get localhost, try to get external IP
+            if self.node_ip.startswith('127.'):
+                # Try to get IP from network interface
+                result = run_command(["hostname", "-I"], check=False)
+                if result.returncode == 0 and result.stdout.strip():
+                    self.node_ip = result.stdout.strip().split()[0]
+                else:
+                    # Fallback to getting IP via external service
+                    result = run_command(["curl", "-s", "ifconfig.me"], check=False, timeout=10)
+                    if result.returncode == 0 and result.stdout.strip():
+                        self.node_ip = result.stdout.strip()
+                    else:
+                        self.node_ip = "127.0.0.1"
             
-            # Check system requirements
-            if not self.dependency_checker.check_system_requirements():
-                return False
-            
-            self.logger.info(f"Using hostname: {self.node_name}")
             self.logger.info(f"Using IP address: {self.node_ip}")
+            return self.node_ip
             
-            # Add Wazuh repository
-            if not self.repo_manager.add_wazuh_repository():
+        except Exception as e:
+            self.logger.warning(f"Could not determine IP address: {str(e)}")
+            self.node_ip = "127.0.0.1"
+            return self.node_ip
+    
+    def validate_environment(self) -> bool:
+        """Validate the installation environment."""
+        # Check if running as root
+        if os.geteuid() != 0:
+            self.logger.error("This script must be run as root")
+            return False
+        
+        # Check OS compatibility
+        distro_id = self.system_info.get('distro_id', '').lower()
+        if distro_id not in ['ubuntu', 'debian']:
+            self.logger.error(f"Unsupported OS: {distro_id}")
+            return False
+        
+        self.logger.info(f"Supported OS: {distro_id} {self.system_info.get('distro_version', '')}")
+        
+        # Check dependencies
+        deps_ok, missing_deps = check_dependencies()
+        if not deps_ok:
+            if not install_missing_dependencies(missing_deps):
                 return False
             
-            # Install components based on arguments
-            if self.args.install_all or self.args.install_indexer:
-                if not self.indexer_installer.install(self.node_name, self.node_ip):
-                    return False
-            
-            if self.args.install_all or self.args.install_manager:
-                if not self.manager_installer.install():
-                    return False
-            
-            if self.args.install_all or self.args.install_dashboard:
-                if not self.dashboard_installer.install(self.node_ip):
-                    return False
-            
-            self.logger.info("Wazuh installation completed successfully!")
-            self._display_post_installation_info()
-            
-            return True
-            
-        except KeyboardInterrupt:
-            self.logger.error("Installation interrupted by user")
+            # Re-check after installation
+            deps_ok, missing_deps = check_dependencies()
+            if not deps_ok:
+                self.logger.error(f"Failed to install dependencies: {missing_deps}")
+                return False
+        
+        # Check system requirements
+        if not check_system_requirements():
             return False
-        except Exception as e:
-            self.logger.error(f"Installation failed: {e}")
-            return False
+        
+        return True
     
-    def _display_post_installation_info(self) -> None:
-        """Display post-installation information."""
-        self.logger.info("=" * 60)
-        self.logger.info("WAZUH INSTALLATION SUMMARY")
-        self.logger.info("=" * 60)
+    def install_components(self, components: List[str]) -> bool:
+        """Install specified Wazuh components."""
+        self.logger.info(f"Using hostname: {self.node_name}")
+        node_ip = self.get_node_ip()
         
-        if self.args.install_all or self.args.install_dashboard:
-            self.logger.info(f"Wazuh Dashboard: https://{self.node_ip}")
-            self.logger.info("Default credentials: admin/admin")
+        # Add Wazuh repository
+        if not add_wazuh_repository():
+            return False
         
-        if self.args.install_all or self.args.install_indexer:
-            self.logger.info(f"Wazuh Indexer: https://{self.node_ip}:9200")
+        success = True
+        installed_components = []
         
-        if self.args.install_all or self.args.install_manager:
-            self.logger.info(f"Wazuh Manager API: https://{self.node_ip}:55000")
+        # Install components in order: indexer, manager, dashboard
+        if "indexer" in components:
+            if install_wazuh_indexer(self.node_name, node_ip):
+                installed_components.append("indexer")
+            else:
+                success = False
         
-        self.logger.info("")
-        self.logger.info("IMPORTANT:")
-        self.logger.info("- Change default passwords after first login")
-        self.logger.info("- Configure firewall rules for required ports")
-        self.logger.info("- Review and customize configuration files as needed")
-        self.logger.info("=" * 60)
+        if "manager" in components and success:
+            if install_wazuh_manager():
+                installed_components.append("manager")
+            else:
+                success = False
+        
+        if "dashboard" in components and success:
+            if install_wazuh_dashboard(node_ip):
+                installed_components.append("dashboard")
+            else:
+                success = False
+        
+        if success and installed_components:
+            # Configure security if indexer was installed
+            if "indexer" in installed_components:
+                configure_wazuh_security(node_ip)
+            
+            # Print summary
+            print_installation_summary(node_ip, installed_components)
+        
+        return success
+    
+    def run_installation(self, args) -> bool:
+        """Run the complete installation process."""
+        self.logger.info(f"Starting Wazuh Server Installation Script v{VERSION}")
+        self.logger.info(f"Author: {AUTHOR}")
+        self.logger.info(f"System: {self.system_info.get('distro_name', 'Unknown')} ({self.system_info.get('machine', 'Unknown')})")
+        
+        # Validate environment
+        if not self.validate_environment():
+            return False
+        
+        # Determine components to install
+        components = []
+        if args.install_all:
+            components = ["indexer", "manager", "dashboard"]
+        else:
+            if args.install_indexer:
+                components.append("indexer")
+            if args.install_manager:
+                components.append("manager")
+            if args.install_dashboard:
+                components.append("dashboard")
+        
+        if not components:
+            self.logger.error("No installation option specified. Use --help for usage information.")
+            return False
+        
+        self.logger.info(f"Installing components: {', '.join(components)}")
+        
+        # Run installation
+        return self.install_components(components)
 
 # =============================================================================
 # COMMAND LINE INTERFACE
 # =============================================================================
 
 def create_argument_parser() -> argparse.ArgumentParser:
-    """Create and configure argument parser."""
+    """Create and configure the argument parser."""
     parser = argparse.ArgumentParser(
-        description="Wazuh Server Installation Script",
+        description=f"Wazuh Server Installation Script v{VERSION}",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Examples:
-  {sys.argv[0]} --install-all                    # Install all components
-  {sys.argv[0]} --install-manager                # Install only Manager
-  {sys.argv[0]} --install-indexer                # Install only Indexer
-  {sys.argv[0]} --install-dashboard              # Install only Dashboard
-  {sys.argv[0]} --install-all --node-name=wazuh-server --node-ip=192.168.1.100
+  {sys.argv[0]} --install-all              # Install all components
+  {sys.argv[0]} --install-manager          # Install only Wazuh Manager
+  {sys.argv[0]} --install-indexer          # Install only Wazuh Indexer
+  {sys.argv[0]} --install-dashboard        # Install only Wazuh Dashboard
+  {sys.argv[0]} --install-manager --install-indexer  # Install Manager and Indexer
 
 Author: {AUTHOR}
-Version: {VERSION}
 License: {LICENSE}
-        """
+"""
     )
     
     # Installation options
     install_group = parser.add_argument_group('Installation Options')
-    install_group.add_argument(
-        '--install-all',
-        action='store_true',
-        help='Install all Wazuh components (Manager, Indexer, Dashboard)'
-    )
-    install_group.add_argument(
-        '--install-manager',
-        action='store_true',
-        help='Install Wazuh Manager'
-    )
-    install_group.add_argument(
-        '--install-indexer',
-        action='store_true',
-        help='Install Wazuh Indexer'
-    )
-    install_group.add_argument(
-        '--install-dashboard',
-        action='store_true',
-        help='Install Wazuh Dashboard'
-    )
+    install_group.add_argument('--install-all', action='store_true',
+                              help='Install all Wazuh components (Manager, Indexer, Dashboard)')
+    install_group.add_argument('--install-manager', action='store_true',
+                              help='Install Wazuh Manager')
+    install_group.add_argument('--install-indexer', action='store_true',
+                              help='Install Wazuh Indexer')
+    install_group.add_argument('--install-dashboard', action='store_true',
+                              help='Install Wazuh Dashboard')
     
     # Configuration options
     config_group = parser.add_argument_group('Configuration Options')
-    config_group.add_argument(
-        '--node-name',
-        help='Node name (default: system hostname)'
-    )
-    config_group.add_argument(
-        '--node-ip',
-        help='Node IP address (default: primary IP)'
-    )
-    config_group.add_argument(
-        '--config-file',
-        help='Custom configuration file path'
-    )
+    config_group.add_argument('--node-name', type=str,
+                             help='Custom node name (default: hostname)')
+    config_group.add_argument('--node-ip', type=str,
+                             help='Custom node IP address (default: auto-detect)')
+    config_group.add_argument('--single-node', action='store_true',
+                             help='Configure for single-node deployment')
+    config_group.add_argument('--cluster-mode', action='store_true',
+                             help='Configure for cluster deployment')
     
-    # Logging options
-    log_group = parser.add_argument_group('Logging Options')
-    log_group.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-        default='INFO',
-        help='Set logging level (default: INFO)'
-    )
-    log_group.add_argument(
-        '--log-file',
-        help='Custom log file path'
-    )
-    
-    # Miscellaneous options
-    misc_group = parser.add_argument_group('Miscellaneous Options')
-    misc_group.add_argument(
-        '--version',
-        action='version',
-        version=f'%(prog)s {VERSION}'
-    )
-    misc_group.add_argument(
-        '--dry-run',
-        action='store_true',
-        help='Show what would be done without executing'
-    )
+    # General options
+    general_group = parser.add_argument_group('General Options')
+    general_group.add_argument('--verbose', '-v', action='store_true',
+                              help='Enable verbose logging')
+    general_group.add_argument('--force', action='store_true',
+                              help='Force installation (overwrite existing)')
+    general_group.add_argument('--version', action='version',
+                              version=f'Wazuh Installation Script v{VERSION}')
     
     return parser
 
-def main() -> int:
+def main():
     """Main entry point."""
     parser = create_argument_parser()
     args = parser.parse_args()
     
-    # Check if any installation option was specified
-    installation_options = [
-        args.install_all,
-        args.install_manager,
-        args.install_indexer,
-        args.install_dashboard
-    ]
+    # Create installer instance
+    installer = WazuhInstaller(verbose=args.verbose)
     
-    if not any(installation_options):
-        logger = logging.getLogger(__name__)
-        logger.error("No installation option specified. Use --help for usage information.")
-        return 1
+    # Override node settings if provided
+    if args.node_name:
+        installer.node_name = args.node_name
+    if args.node_ip:
+        installer.node_ip = args.node_ip
     
-    # Check for root privileges
-    if os.geteuid() != 0:
-        logger = logging.getLogger(__name__)
-        logger.error("This script must be run as root. Use sudo.")
-        return 1
-    
-    # Create installer and run
-    installer = WazuhInstaller(args)
-    
-    if installer.run():
-        return 0
-    else:
-        return 1
+    try:
+        # Run installation
+        success = installer.run_installation(args)
+        
+        if success:
+            installer.logger.info("Installation completed successfully!")
+            sys.exit(0)
+        else:
+            installer.logger.error("Installation failed!")
+            sys.exit(1)
+            
+    except KeyboardInterrupt:
+        installer.logger.warning("Installation interrupted by user")
+        sys.exit(130)
+    except Exception as e:
+        installer.logger.error(f"Unexpected error: {str(e)}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    sys.exit(main())
-            
+    main()
