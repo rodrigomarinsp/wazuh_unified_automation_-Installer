@@ -287,7 +287,7 @@ class WazuhInstaller:
     
     def check_and_install_java(self) -> None:
 
-        print("🔍 Verificando se o Java 11 está instalado...")
+        print("ð Verificando se o Java 11 estÃ¡ instalado...")
 
         def run(cmd):
             return subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -300,16 +300,16 @@ class WazuhInstaller:
                 version = version_line.split('"')[1]
                 major = int(version.split(".")[0]) if version.startswith("1.") is False else int(version.split(".")[1])
                 if major == 11:
-                    print("✅ Java 11 já está instalado.")
+                    print("â Java 11 jÃ¡ estÃ¡ instalado.")
                     return
                 else:
-                    print(f"⚠️ Java detectado: versão {version}. Esperado: 11.")
+                    print(f"â ï¸ Java detectado: versÃ£o {version}. Esperado: 11.")
             else:
-                print("⚠️ Java detectado mas versão não identificada.")
+                print("â ï¸ Java detectado mas versÃ£o nÃ£o identificada.")
         else:
-            print("⚠️ Java não encontrado.")
+            print("â ï¸ Java nÃ£o encontrado.")
 
-        print("📦 Instalando Java 11...")
+        print("ð¦ Instalando Java 11...")
 
         distro = platform.linux_distribution()[0].lower() if hasattr(platform, 'linux_distribution') else platform.system().lower()
         if "ubuntu" in distro or "debian" or "linux" in distro:
@@ -322,16 +322,16 @@ class WazuhInstaller:
                 "yum install -y java-11-openjdk-devel"
             ]
         else:
-            raise RuntimeError(f"Sistema não suportado para instalação automática do Java: {distro}")
+            raise RuntimeError(f"Sistema nÃ£o suportado para instalaÃ§Ã£o automÃ¡tica do Java: {distro}")
 
         for cmd in cmds:
             res = run(cmd)
             if res.returncode != 0:
-                print(f"❌ Erro ao executar: {cmd}\n{res.stderr}")
-                raise RuntimeError("Falha na instalação do Java.")
-        print("✅ Java 11 instalado com sucesso.\n")
+                print(f"â Erro ao executar: {cmd}\n{res.stderr}")
+                raise RuntimeError("Falha na instalaÃ§Ã£o do Java.")
+        print("â Java 11 instalado com sucesso.\n")
         self.logger.info("Java 11 instalado com sucesso.")
-        self.logger.info("✅ Java 11 instalado com sucesso.")
+        self.logger.info("â Java 11 instalado com sucesso.")
 
     
     def install_dependencies(self) -> None:
@@ -585,12 +585,12 @@ KIBANASERVER_PASSWORD="{self.passwords['kibanaserver']}"
             try:
                 result = self.run_command(f'systemctl is-active {service}', check=False)
                 if result[0] == 0 and 'active' in result[1]:
-                    self.logger.info(f"✓ {service} is running")
+                    self.logger.info(f"â {service} is running")
                 else:
-                    self.logger.error(f"✗ {service} is not running")
+                    self.logger.error(f"â {service} is not running")
                     all_healthy = False
             except Exception as e:
-                self.logger.error(f"✗ Could not check {service}: {e}")
+                self.logger.error(f"â Could not check {service}: {e}")
                 all_healthy = False
         
         if all_healthy:
@@ -604,31 +604,31 @@ KIBANASERVER_PASSWORD="{self.passwords['kibanaserver']}"
         
         summary = f"""
 ======================================================================
-🛡️  WAZUH SERVER INSTALLATION SUMMARY
+ð¡ï¸  WAZUH SERVER INSTALLATION SUMMARY
 ======================================================================
 Author: {AUTHOR}
 Installation completed: {datetime.now()}
 
-🌐 Access Information:
+ð Access Information:
    Dashboard:  https://{server_ip}
    API:        https://{server_ip}:55000
    Indexer:    https://{server_ip}:9200
 
-🔐 Credentials:
+ð Credentials:
    Check file: {PASSWORDS_FILE}
    Dashboard username: admin
 
-📋 Next Steps:
+ð Next Steps:
    1. Access the dashboard using the URL above
    2. Install agents on your endpoints
    3. Configure rules and compliance policies
    4. Review security hardening guide
 
-📚 Documentation:
+ð Documentation:
    Local:  README.md
    Online: https://documentation.wazuh.com/
 
-🆘 Support: {EMAIL}
+ð Support: {EMAIL}
 ======================================================================
 """
         
