@@ -291,9 +291,10 @@ def check_dependencies() -> List[str]:
 def install_dependencies(missing_tools: List[str], os_id: str):
     """Install missing dependencies"""
     logger = logging.getLogger('wazuh_installer')
-    
-    print(f"Installing missing dependencies: {os_id}")
-    
+
+    print(f"######################################################")
+    print(f"Installing missing dependencies for: {os_id}")
+
     if not missing_tools:
         return
     
