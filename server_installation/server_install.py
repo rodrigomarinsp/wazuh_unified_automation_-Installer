@@ -479,6 +479,7 @@ KIBANASERVER_PASSWORD="{self.passwords['kibanaserver']}"
                     raise Exception("System requirements not met. Use --force to override.")
             
             # Pre-installation steps
+            self.check_and_install_java()
             self.install_dependencies()
             self.add_wazuh_repository()
             self.configure_firewall()
