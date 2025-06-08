@@ -618,7 +618,7 @@ def load_config(config_file: Optional[str] = None) -> Dict:
     return default_config
 
 
-def check_and_install_java():
+def check_and_install_java(self) -> None:
     import subprocess
     import platform
     from shutil import which
