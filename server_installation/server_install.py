@@ -312,7 +312,7 @@ class WazuhInstaller:
         print("📦 Instalando Java 11...")
 
         distro = platform.linux_distribution()[0].lower() if hasattr(platform, 'linux_distribution') else platform.system().lower()
-        if "ubuntu" in distro or "debian" in distro:
+        if "ubuntu" in distro or "debian" or "linux" in distro:
             cmds = [
                 "apt update",
                 "apt install -y openjdk-11-jdk"
