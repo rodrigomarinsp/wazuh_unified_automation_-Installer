@@ -297,7 +297,7 @@ def install_dependencies(missing_tools: List[str], os_id: str):
     
     logger.info(f"Installing missing tools: {', '.join(missing_tools)}")
     
-    if os_id in ['ubuntu', 'debian']:
+    if os_id in ['ubuntu', 'debian', 'linux']:
         # Update package cache
         run_command(['apt-get', 'update'])
         
