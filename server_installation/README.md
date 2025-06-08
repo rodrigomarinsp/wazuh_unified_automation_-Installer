@@ -390,3 +390,72 @@ See `../CONTRIBUTING.md` for contribution guidelines.
 **🛡️ Wazuh Unified Installer - Server Module**  
 **Author:** Rodrigo Marins Piaba (Fanaticos4tech)  
 **License:** GPL-3.0 | **Support:** fanaticos4tech@gmail.com
+
+---
+
+## ❗ Troubleshooting: JVM Error - Unrecognized VM option 'UseG1GCApplicationConcurrentTime'
+
+If you encounter the following error when starting `wazuh-indexer`:
+
+```
+Unrecognized VM option 'UseG1GCApplicationConcurrentTime'
+Error: Could not create the Java Virtual Machine.
+Error: A fatal exception has occurred. Program will exit.
+```
+
+This indicates that an invalid Java flag is being passed to the JVM during the launch of the Wazuh Indexer.
+
+### ✅ Root Cause
+
+The option `UseG1GCApplicationConcurrentTime` is **not valid** in any version of OpenJDK, including OpenJDK 11, which is officially supported by Wazuh. This JVM flag was found in the following configuration file:
+
+```
+/etc/wazuh-indexer/jvm.options.d/wazuh-indexer.options
+```
+
+It is likely that this flag was included by mistake, either manually or by a custom script.
+
+---
+
+### 🔍 How to Fix It
+
+1. Open the file in a text editor:
+
+```bash
+sudo nano /etc/wazuh-indexer/jvm.options.d/wazuh-indexer.options
+```
+
+2. Locate the line that includes the invalid option:
+
+```text
+-XX:+UseG1GCApplicationConcurrentTime
+```
+
+3. Comment out or delete the line:
+
+```text
+# -XX:+UseG1GCApplicationConcurrentTime
+```
+
+4. Save the file and exit the editor (CTRL+O, ENTER, CTRL+X).
+
+5. Reload and restart the Wazuh Indexer service:
+
+```bash
+sudo systemctl daemon-reexec
+sudo systemctl daemon-reload
+sudo systemctl restart wazuh-indexer
+```
+
+---
+
+### ✅ Validation
+
+To confirm that the service is working properly, run:
+
+```bash
+sudo systemctl status wazuh-indexer
+journalctl -u wazuh-indexer -n 30
+```
+
+If the flag is successfully removed, the JVM error will no longer occur and the service should start normally.
