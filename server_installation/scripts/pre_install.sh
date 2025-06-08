@@ -174,7 +174,6 @@ check_network_connectivity() {
         "https://packages.wazuh.com"
         "https://github.com"
         "https://api.github.com"
-        "8.8.8.8"
     )
     
     local failed_connections=0
