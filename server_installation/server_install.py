@@ -294,6 +294,7 @@ def install_dependencies(missing_tools: List[str], os_id: str):
     
     if not missing_tools:
         return
+    print(f"Installing missing dependencies: {os_id}")
     
     logger.info(f"Installing missing tools: {', '.join(missing_tools)}")
     
